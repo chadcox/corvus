@@ -1,0 +1,136 @@
+name: forensicflow
+
+services:
+  api:
+    profiles: ["dev-fast", "dev-tools"]
+    volumes:
+      - ./apps/api:/app/apps/api
+      - ./packages/ff_core:/app/packages/ff_core
+      - evidence_data:/data/evidence
+      - ./samples:/samples:ro
+      - chainsaw_rules:/opt/chainsaw/rules:ro
+      - chainsaw_mappings:/opt/chainsaw/mappings:ro
+    environment:
+      PYTHONPATH: /app/apps/api:/app/packages/ff_core
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  worker:
+    profiles: ["dev-fast"]
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      args:
+        INSTALL_OPEN_FORENSICS: "false"
+        INSTALL_VOLATILITY3: ${INSTALL_VOLATILITY3:-true}
+    volumes:
+      - ./apps/worker:/app/apps/worker
+      - ./packages/ff_core:/app/packages/ff_core
+      - evidence_data:/data/evidence
+      - sigma_rules:/opt/sigma/rules
+      - chainsaw_rules:/opt/chainsaw/rules
+      - chainsaw_mappings:/opt/chainsaw/mappings
+    environment:
+      PYTHONPATH: /app/apps/worker:/app/packages/ff_core
+
+  beat:
+    profiles: ["dev-fast"]
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      args:
+        INSTALL_OPEN_FORENSICS: "false"
+        INSTALL_VOLATILITY3: ${INSTALL_VOLATILITY3:-true}
+    volumes:
+      - ./apps/worker:/app/apps/worker
+      - ./packages/ff_core:/app/packages/ff_core
+      - sigma_rules:/opt/sigma/rules
+      - chainsaw_rules:/opt/chainsaw/rules
+      - chainsaw_mappings:/opt/chainsaw/mappings
+    environment:
+      PYTHONPATH: /app/apps/worker:/app/packages/ff_core
+    command: ["celery", "-A", "worker.celery_app", "beat", "--loglevel=info", "--schedule", "/tmp/celerybeat-schedule"]
+
+  worker_tools:
+    profiles: ["dev-tools"]
+    image: ${WORKER_TOOLS_IMAGE:-forensicflow-worker:tools}
+    environment:
+      DATABASE_URL: postgresql+psycopg://forensicflow:forensicflow@postgres:5432/forensicflow
+      OPENSEARCH_URL: http://opensearch:9200
+      SEARCH_BACKEND: opensearch
+      REDIS_URL: redis://redis:6379/0
+      EVIDENCE_ROOT: /data/evidence
+      EZTOOLS_ROOT: /opt/eztools
+      SIGMA_RULES_ROOT: /opt/sigma/rules
+      SIGMA_RULES_BUNDLED: /opt/sigma-bundled
+      SIGMA_REF: ${SIGMA_REF:-master}
+      SIGMA_PROFILE: ${SIGMA_PROFILE:-dfir}
+      SIGMA_REFRESH_INTERVAL_HOURS: ${SIGMA_REFRESH_INTERVAL_HOURS:-24}
+      CHAINSAW_ENABLED: ${CHAINSAW_ENABLED:-true}
+      CHAINSAW_INCLUDE_SIGMA: ${CHAINSAW_INCLUDE_SIGMA:-true}
+      CHAINSAW_SIGMA_PROFILE: ${CHAINSAW_SIGMA_PROFILE:-dfir}
+      CHAINSAW_EVTX_MODE: ${CHAINSAW_EVTX_MODE:-priority}
+      CHAINSAW_EVTX_MAX: ${CHAINSAW_EVTX_MAX:-64}
+      CHAINSAW_EVTX_PARALLEL: ${CHAINSAW_EVTX_PARALLEL:-4}
+      CHAINSAW_EVTX_BATCH_SIZE: ${CHAINSAW_EVTX_BATCH_SIZE:-16}
+      CHAINSAW_HUNT_BATCH_TIMEOUT_SECONDS: ${CHAINSAW_HUNT_BATCH_TIMEOUT_SECONDS:-300}
+      CHAINSAW_SIGMA_DFIR_CACHE: /opt/sigma/rules-dfir-cache
+      CHAINSAW_REF: ${CHAINSAW_REF:-master}
+      CHAINSAW_BIN: /usr/local/bin/chainsaw
+      CHAINSAW_RULES_ROOT: /opt/chainsaw/rules
+      CHAINSAW_MAPPINGS_ROOT: /opt/chainsaw/mappings
+      CHAINSAW_RULES_BUNDLED: /opt/chainsaw-bundled
+      HINDSIGHT_ENABLED: ${HINDSIGHT_ENABLED:-true}
+      HINDSIGHT_BIN: /usr/local/bin/hindsight
+      HINDSIGHT_MAX_PROFILES: ${HINDSIGHT_MAX_PROFILES:-8}
+      HINDSIGHT_TIMEOUT_SECONDS: ${HINDSIGHT_TIMEOUT_SECONDS:-900}
+      PLASO_ENABLED: ${PLASO_ENABLED:-true}
+      MAC_APT_ENABLED: ${MAC_APT_ENABLED:-true}
+      DELETE_EVIDENCE_AFTER_INGEST: ${DELETE_EVIDENCE_AFTER_INGEST:-false}
+      PYTHONPATH: /app/apps/worker:/app/packages/ff_core
+    volumes:
+      - ./apps/worker:/app/apps/worker
+      - ./packages/ff_core:/app/packages/ff_core
+      - evidence_data:/data/evidence
+      - sigma_rules:/opt/sigma/rules
+      - chainsaw_rules:/opt/chainsaw/rules
+      - chainsaw_mappings:/opt/chainsaw/mappings
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    command: ["celery", "-A", "worker.celery_app", "worker", "--loglevel=info", "-Q", "ingest"]
+
+  beat_tools:
+    profiles: ["dev-tools"]
+    image: ${WORKER_TOOLS_IMAGE:-forensicflow-worker:tools}
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SIGMA_RULES_ROOT: /opt/sigma/rules
+      SIGMA_RULES_BUNDLED: /opt/sigma-bundled
+      SIGMA_REF: ${SIGMA_REF:-master}
+      SIGMA_PROFILE: ${SIGMA_PROFILE:-dfir}
+      SIGMA_REFRESH_INTERVAL_HOURS: ${SIGMA_REFRESH_INTERVAL_HOURS:-24}
+      PYTHONPATH: /app/apps/worker:/app/packages/ff_core
+    volumes:
+      - ./apps/worker:/app/apps/worker
+      - ./packages/ff_core:/app/packages/ff_core
+      - sigma_rules:/opt/sigma/rules
+      - chainsaw_rules:/opt/chainsaw/rules
+      - chainsaw_mappings:/opt/chainsaw/mappings
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "worker.celery_app", "beat", "--loglevel=info", "--schedule", "/tmp/celerybeat-schedule"]
+
+  web:
+    profiles: ["dev-fast", "dev-tools"]
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+    command: ["sh", "-lc", "npm install && npm run dev -- --host 0.0.0.0"]
+
+volumes:
+  web_node_modules:

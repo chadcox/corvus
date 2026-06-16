@@ -1,0 +1,45 @@
+name: API Migrations And Tests
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'packages/ff_core/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/api-migrations.yml'
+  push:
+    branches: [ main ]
+    paths:
+      - 'apps/api/**'
+      - 'packages/ff_core/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/api-migrations.yml'
+
+jobs:
+  api-migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Migration guard (schema changes require revision)
+        run: |
+          bash apps/api/scripts/require_migration_for_schema_changes.sh "${{ github.base_ref }}"
+
+      - name: Build and start stack
+        run: docker compose up -d --build
+
+      - name: Migration smoke check
+        run: docker compose exec -T api bash /app/apps/api/scripts/check_migrations.sh
+
+      - name: Targeted migration tests
+        run: docker compose exec -T api pytest -q tests/test_migration_integrity.py tests/test_database_migrations.py
+
+      - name: Full API regression
+        run: docker compose exec -T api pytest -q tests
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v

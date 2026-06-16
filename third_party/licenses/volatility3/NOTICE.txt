@@ -1,0 +1,13 @@
+Volatility 3
+Upstream: https://github.com/volatilityfoundation/volatility3
+License: Volatility Software License (VSL) Version 1.0
+License text: https://github.com/volatilityfoundation/volatility3/blob/develop/LICENSE.txt
+
+Volatility 3 is an OPTIONAL worker component. It is installed only when the
+worker image is built with INSTALL_OPEN_FORENSICS=true and INSTALL_VOLATILITY3=true
+(see scripts/install-open-forensics.sh). It is pip-installed at build time and is
+not redistributed in this source repository.
+
+Before redistributing a worker IMAGE that includes Volatility 3, copy the
+upstream VSL-1.0 LICENSE.txt into this directory and verify compliance with its
+terms (notably the non-commercial-derivative and attribution provisions).

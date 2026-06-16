@@ -1,0 +1,9 @@
+# EZ Tools net9 zip SHA-256 checksums (2026.5.0 build, verified 2026-05-28)
+# Regenerate: docker compose exec worker bash scripts/capture-eztools-checksums.sh
+4d740e51c4532c340d080f832c766c2acb0351832dae118d1abe9bb49203faa4  EvtxECmd.zip
+60ae857a554b830243e38e91fafdfdf6066f31c703282c5c6f40daf3b64d3160  MFTECmd.zip
+4a4e2f4beba54fdb9ba4eeb5e6f9d323e666b309e407ac89e047f82be0c963a2  RECmd.zip
+d40d1e7863159dbd9aa3ae826d919edc490ca33df84bde57e86da848a583af03  AmcacheParser.zip
+e361d397c8c64959fd537e1826fcb89ea2d6fe24b3b4b63e6666479d565caa15  PECmd.zip
+155ee54e6ac6b70bce1aa636ec52d0b0165263933764d9a45c85af97df546892  JLECmd.zip
+f3e9c799ec7d3fa4cd5f553ec3f9d544c80c8e48afd04ef43456da3d48ad0760  LECmd.zip

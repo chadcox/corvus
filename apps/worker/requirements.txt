@@ -1,0 +1,9 @@
+celery>=5.4
+redis>=5.2
+sqlalchemy>=2.0
+psycopg[binary]>=3.2
+pydantic-settings>=2.6
+pyyaml>=6.0
+opensearch-py>=2.8
+yara-python>=4.5
+pytest>=9.0

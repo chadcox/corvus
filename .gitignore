@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
+apps/web/test-results/
+playwright-report/
+
+# Sample evidence packages (not published)
+samples/
+
+# Evidence & runtime data
+data/evidence/*
+!data/evidence/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
+tmp/
+
+# IDE & tooling
+.idea/
+.vscode/
+*.swp
+.serena/
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+apps/worker/*log2timeline-*.log.gz
+apps/worker/Worker_00_log2timeline-*.log.gz
+
+# Local planning artifacts
+docs/superpowers/plans/
+
+# EZ Tools (downloaded at build/runtime)
+tools/eztools/
+
+docs/PLANNED_IMPROVEMENTS.md
+docs/PLANNED_IMPROVEMENTS_WORKFLOW.md
