@@ -4,9 +4,10 @@
 set -euo pipefail
 
 DEST="${1:-/opt/chainsaw-bundled}"
-REF="${CHAINSAW_REF:-master}"
+# Pinned to the v2.16.0 release tag to match the installed chainsaw binary.
+REF="${CHAINSAW_REF:-v2.16.0}"
 ARCHIVE="/tmp/chainsaw-${REF}.zip"
-BASE_URL="https://github.com/WithSecureLabs/chainsaw/archive/refs/heads/${REF}.zip"
+BASE_URL="https://github.com/WithSecureLabs/chainsaw/archive/${REF}.zip"
 
 echo "Downloading Chainsaw rules (${REF}) → ${DEST}…"
 rm -rf "${DEST}"

@@ -28,7 +28,8 @@ RUN chmod +x /usr/local/bin/fetch-sigma-rules.sh /usr/local/bin/fetch-chainsaw-r
 COPY apps/worker/yara/zz_smoketest.yar /opt/yara-bundled/signature-base/yara/zz_smoketest.yar
 
 COPY scripts/install-hindsight.sh /usr/local/bin/install-hindsight.sh
-ARG HINDSIGHT_REF=main
+# RyanDFIR/hindsight release v2026.04 (pinned for reproducible builds)
+ARG HINDSIGHT_REF=f64bd92e8297244e923b5bba880a46fba4974402
 RUN chmod +x /usr/local/bin/install-hindsight.sh \
     && HINDSIGHT_REF=${HINDSIGHT_REF} /usr/local/bin/install-hindsight.sh
 
@@ -68,6 +69,16 @@ ENV YARA_ENABLED=true
 ENV HINDSIGHT_ENABLED=true
 ENV HINDSIGHT_BIN=/usr/local/bin/hindsight
 ENV PATH=/opt/open-forensics/bin:${PATH}
+ENV HOME=/home/app
+
+# Run as a non-root user with the same uid as the api service so the shared
+# evidence_data volume and the rule volumes get consistent ownership when first
+# created. The worker writes rule bundles, the DFIR cache, and the YARA seed
+# under /opt/{sigma,chainsaw,yara}, so those roots are owned by the app user.
+RUN groupadd -g 10001 app && useradd -u 10001 -g 10001 -m app \
+    && mkdir -p /data/evidence /opt/sigma/rules /opt/chainsaw/rules /opt/chainsaw/mappings /opt/yara/rules \
+    && chown -R 10001:10001 /data/evidence /opt/sigma /opt/chainsaw /opt/yara /home/app
+USER app
 
 WORKDIR /app/apps/worker
 ENTRYPOINT ["/entrypoint.sh"]

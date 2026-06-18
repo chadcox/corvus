@@ -3,12 +3,13 @@
 set -euo pipefail
 
 DEST="${1:-/opt/yara-bundled/signature-base}"
-REF="${YARA_REF:-master}"
+# signature-base has no stable releases; pin to a commit for reproducible builds.
+REF="${YARA_REF:-43b2b2faafdaeb7f00102673f62555a2feb04c1b}"
 
 rm -rf "${DEST}"
 mkdir -p "${DEST}"
 ARCHIVE="/tmp/signature-base-${REF}.zip"
-BASE_URL="https://github.com/Neo23x0/signature-base/archive/refs/heads/${REF}.zip"
+BASE_URL="https://github.com/Neo23x0/signature-base/archive/${REF}.zip"
 
 echo "Downloading signature-base (${REF}) -> ${DEST}..."
 wget -q "${BASE_URL}" -O "${ARCHIVE}"

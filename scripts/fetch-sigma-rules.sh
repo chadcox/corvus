@@ -4,13 +4,14 @@
 set -euo pipefail
 
 DEST="${1:-/opt/sigma/rules}"
-REF="${SIGMA_REF:-master}"
+# Pinned to a SigmaHQ release tag; the beat scheduler refreshes rules at runtime.
+REF="${SIGMA_REF:-r2026-04-01}"
 
 # Replace destination atomically when updating an existing bundle.
 rm -rf "${DEST}"
 mkdir -p "${DEST}"
 ARCHIVE="/tmp/sigma-${REF}.zip"
-BASE_URL="https://github.com/SigmaHQ/sigma/archive/refs/heads/${REF}.zip"
+BASE_URL="https://github.com/SigmaHQ/sigma/archive/${REF}.zip"
 
 echo "Downloading Sigma rules (${REF}) → ${DEST}…"
 wget -q "${BASE_URL}" -O "${ARCHIVE}"

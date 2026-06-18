@@ -168,7 +168,7 @@ services:
         INSTALL_OPEN_FORENSICS: ${INSTALL_OPEN_FORENSICS:-false}
         INSTALL_VOLATILITY3: ${INSTALL_VOLATILITY3:-false}
     command:
-      ["celery", "-A", "worker.celery_app", "beat", "--loglevel=info"]
+      ["celery", "-A", "worker.celery_app", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
     environment:
       REDIS_URL: redis://redis:6379/0
       SIGMA_RULES_ROOT: /opt/sigma/rules

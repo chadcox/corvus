@@ -15,6 +15,14 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY apps/api /app/apps/api
 ENV PYTHONPATH=/app/apps/api
 
+# Run as a non-root user with a fixed uid shared with the worker so the
+# evidence_data and chainsaw rule volumes get consistent ownership on first
+# creation (Docker copies the mountpoint owner into a fresh named volume).
+RUN groupadd -g 10001 app && useradd -u 10001 -g 10001 -m app \
+    && mkdir -p /data/evidence /opt/chainsaw/rules /opt/chainsaw/mappings \
+    && chown -R 10001:10001 /data/evidence /opt/chainsaw
+USER app
+
 WORKDIR /app/apps/api
 EXPOSE 8000
 
