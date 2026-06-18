@@ -1,0 +1,25 @@
+name: Dependabot auto-merge
+
+# Auto-merge Dependabot patch and minor updates. Major version bumps are left
+# for manual review. Requires "Allow auto-merge" enabled on the repository; the
+# merge only completes once required status checks pass (configure branch
+# protection on main to enforce a CI gate).
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+      - name: Enable auto-merge for non-major updates
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "${{ github.event.pull_request.html_url }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
