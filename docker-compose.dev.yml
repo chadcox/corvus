@@ -1,17 +1,17 @@
-name: forensicflow
+name: corvus
 
 services:
   api:
     profiles: ["dev-fast", "dev-tools"]
     volumes:
       - ./apps/api:/app/apps/api
-      - ./packages/ff_core:/app/packages/ff_core
+      - ./packages/corvus_core:/app/packages/corvus_core
       - evidence_data:/data/evidence
       - ./samples:/samples:ro
       - chainsaw_rules:/opt/chainsaw/rules:ro
       - chainsaw_mappings:/opt/chainsaw/mappings:ro
     environment:
-      PYTHONPATH: /app/apps/api:/app/packages/ff_core
+      PYTHONPATH: /app/apps/api:/app/packages/corvus_core
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   worker:
@@ -24,13 +24,13 @@ services:
         INSTALL_VOLATILITY3: ${INSTALL_VOLATILITY3:-true}
     volumes:
       - ./apps/worker:/app/apps/worker
-      - ./packages/ff_core:/app/packages/ff_core
+      - ./packages/corvus_core:/app/packages/corvus_core
       - evidence_data:/data/evidence
       - sigma_rules:/opt/sigma/rules
       - chainsaw_rules:/opt/chainsaw/rules
       - chainsaw_mappings:/opt/chainsaw/mappings
     environment:
-      PYTHONPATH: /app/apps/worker:/app/packages/ff_core
+      PYTHONPATH: /app/apps/worker:/app/packages/corvus_core
 
   beat:
     profiles: ["dev-fast"]
@@ -42,19 +42,19 @@ services:
         INSTALL_VOLATILITY3: ${INSTALL_VOLATILITY3:-true}
     volumes:
       - ./apps/worker:/app/apps/worker
-      - ./packages/ff_core:/app/packages/ff_core
+      - ./packages/corvus_core:/app/packages/corvus_core
       - sigma_rules:/opt/sigma/rules
       - chainsaw_rules:/opt/chainsaw/rules
       - chainsaw_mappings:/opt/chainsaw/mappings
     environment:
-      PYTHONPATH: /app/apps/worker:/app/packages/ff_core
+      PYTHONPATH: /app/apps/worker:/app/packages/corvus_core
     command: ["celery", "-A", "worker.celery_app", "beat", "--loglevel=info", "--schedule", "/tmp/celerybeat-schedule"]
 
   worker_tools:
     profiles: ["dev-tools"]
-    image: ${WORKER_TOOLS_IMAGE:-forensicflow-worker:tools}
+    image: ${WORKER_TOOLS_IMAGE:-corvus-worker:tools}
     environment:
-      DATABASE_URL: postgresql+psycopg://forensicflow:forensicflow@postgres:5432/forensicflow
+      DATABASE_URL: postgresql+psycopg://corvus:corvus@postgres:5432/corvus
       OPENSEARCH_URL: http://opensearch:9200
       SEARCH_BACKEND: opensearch
       REDIS_URL: redis://redis:6379/0
@@ -86,10 +86,10 @@ services:
       PLASO_ENABLED: ${PLASO_ENABLED:-true}
       MAC_APT_ENABLED: ${MAC_APT_ENABLED:-true}
       DELETE_EVIDENCE_AFTER_INGEST: ${DELETE_EVIDENCE_AFTER_INGEST:-false}
-      PYTHONPATH: /app/apps/worker:/app/packages/ff_core
+      PYTHONPATH: /app/apps/worker:/app/packages/corvus_core
     volumes:
       - ./apps/worker:/app/apps/worker
-      - ./packages/ff_core:/app/packages/ff_core
+      - ./packages/corvus_core:/app/packages/corvus_core
       - evidence_data:/data/evidence
       - sigma_rules:/opt/sigma/rules
       - chainsaw_rules:/opt/chainsaw/rules
@@ -105,7 +105,7 @@ services:
 
   beat_tools:
     profiles: ["dev-tools"]
-    image: ${WORKER_TOOLS_IMAGE:-forensicflow-worker:tools}
+    image: ${WORKER_TOOLS_IMAGE:-corvus-worker:tools}
     environment:
       REDIS_URL: redis://redis:6379/0
       SIGMA_RULES_ROOT: /opt/sigma/rules
@@ -113,10 +113,10 @@ services:
       SIGMA_REF: ${SIGMA_REF:-master}
       SIGMA_PROFILE: ${SIGMA_PROFILE:-dfir}
       SIGMA_REFRESH_INTERVAL_HOURS: ${SIGMA_REFRESH_INTERVAL_HOURS:-24}
-      PYTHONPATH: /app/apps/worker:/app/packages/ff_core
+      PYTHONPATH: /app/apps/worker:/app/packages/corvus_core
     volumes:
       - ./apps/worker:/app/apps/worker
-      - ./packages/ff_core:/app/packages/ff_core
+      - ./packages/corvus_core:/app/packages/corvus_core
       - sigma_rules:/opt/sigma/rules
       - chainsaw_rules:/opt/chainsaw/rules
       - chainsaw_mappings:/opt/chainsaw/mappings

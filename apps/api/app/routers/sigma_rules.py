@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.celery_client import celery_app
 from app.sigma_rules_status import get_sigma_rules_status
-from ff_core.schemas import SigmaRulesStatusRead
+from corvus_core.schemas import SigmaRulesStatusRead
 
 router = APIRouter(prefix="/sigma/rules", tags=["sigma-rules"])
 

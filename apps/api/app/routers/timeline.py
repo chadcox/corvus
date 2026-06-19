@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import EvidenceSource, TimelineEvent
-from ff_core.schemas import TimelineEventRead
+from corvus_core.schemas import TimelineEventRead
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/timeline", tags=["timeline"])
 

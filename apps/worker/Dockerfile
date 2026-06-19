@@ -47,8 +47,8 @@ COPY THIRD_PARTY_NOTICES.md /licenses/THIRD_PARTY_NOTICES.md
 COPY scripts/docker-worker-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-COPY packages/ff_core /app/packages/ff_core
-RUN pip install --no-cache-dir /app/packages/ff_core
+COPY packages/corvus_core /app/packages/corvus_core
+RUN pip install --no-cache-dir /app/packages/corvus_core
 
 COPY apps/worker/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt

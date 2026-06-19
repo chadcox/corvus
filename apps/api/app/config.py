@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = (
-        "postgresql+psycopg://forensicflow:forensicflow@localhost:5432/forensicflow"
+        "postgresql+psycopg://corvus:corvus@localhost:5432/corvus"
     )
     search_backend: str = "postgres"
     opensearch_url: str = "http://localhost:9200"
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     auth_bootstrap_admin_username: str = ""
     auth_bootstrap_admin_password: str = ""
     admin_disk_usage_cache_seconds: int = 30
-    docker_compose_project: str = "forensicflow"
+    docker_compose_project: str = "corvus"
     environment: str = "development"
 
     @property

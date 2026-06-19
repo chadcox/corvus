@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from app.celery_client import celery_app
 from app.database import get_db
 from app.models import EvidenceSource, IngestJob
-from ff_core.constants import JobStatus
-from ff_core.schemas import IngestJobRead
+from corvus_core.constants import JobStatus
+from corvus_core.schemas import IngestJobRead
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 

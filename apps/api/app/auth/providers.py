@@ -10,7 +10,7 @@ from app.models import User
 
 # Compared against when the user is missing/inactive so login timing stays
 # constant regardless of whether the username exists (avoids enumeration).
-_DUMMY_PASSWORD_HASH = bcrypt.hashpw(b"forensicflow-dummy-password", bcrypt.gensalt()).decode("utf-8")
+_DUMMY_PASSWORD_HASH = bcrypt.hashpw(b"corvus-dummy-password", bcrypt.gensalt()).decode("utf-8")
 
 
 @dataclass(frozen=True)

@@ -27,7 +27,7 @@ from app.auth.service import recent_revocation_failures
 from app.routers.search import search_metrics_snapshot
 from app.services.readiness import readiness_payload
 from app.sigma_rules_status import get_sigma_rules_status
-from ff_core.schemas import (
+from corvus_core.schemas import (
     AdminDiskUsage,
     AdminFeatureFlags,
     AdminOverviewRead,

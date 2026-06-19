@@ -1,6 +1,6 @@
 # Open Source Parser Integrations
 
-ForensicFlow uses source adapters to integrate external forensic tools without
+Corvus uses source adapters to integrate external forensic tools without
 making one collector or OS the center of the product.
 
 ## Bundling policy

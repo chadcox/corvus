@@ -1,4 +1,4 @@
-"""Parse Hindsight JSONL output into ForensicFlow timeline events."""
+"""Parse Hindsight JSONL output into Corvus timeline events."""
 
 from __future__ import annotations
 

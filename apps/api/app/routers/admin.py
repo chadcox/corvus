@@ -17,7 +17,7 @@ from app.services.admin_ops import (
 )
 from app.services.case_purge import purge_cases
 from app.util.evidence_storage import wipe_all_evidence_dirs
-from ff_core.schemas import (
+from corvus_core.schemas import (
     AdminConfigRead,
     AdminEvidenceSourceSummary,
     AdminJobSummary,

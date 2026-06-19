@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Entity, EvidenceSource, FilesystemNode, SigmaDetection, TimelineEvent
-from ff_core.schemas import SourceStats
+from corvus_core.schemas import SourceStats
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/stats", tags=["stats"])
 

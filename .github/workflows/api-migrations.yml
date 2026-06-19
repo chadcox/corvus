@@ -4,14 +4,14 @@ on:
   pull_request:
     paths:
       - 'apps/api/**'
-      - 'packages/ff_core/**'
+      - 'packages/corvus_core/**'
       - 'docker-compose.yml'
       - '.github/workflows/api-migrations.yml'
   push:
     branches: [ main ]
     paths:
       - 'apps/api/**'
-      - 'packages/ff_core/**'
+      - 'packages/corvus_core/**'
       - 'docker-compose.yml'
       - '.github/workflows/api-migrations.yml'
 

@@ -10,7 +10,7 @@ import redis
 
 from app.config import settings
 
-REDIS_KEY = "forensicflow:sigma:rules:status"
+REDIS_KEY = "corvus:sigma:rules:status"
 
 
 def _count_rules(rules_root: str) -> int:

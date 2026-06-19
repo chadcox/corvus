@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from app.chainsaw_rules_status import get_chainsaw_rules_status
 from app.sigma_rules_status import get_sigma_rules_status
-from ff_core.schemas import (
+from corvus_core.schemas import (
     ChainsawRulesStatusRead,
     DetectionRulesStatusRead,
     SigmaRulesStatusRead,

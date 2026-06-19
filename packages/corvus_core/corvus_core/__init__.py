@@ -1,5 +1,5 @@
-from ff_core.constants import EvidencePlatform, JobStatus, KapeCategory
-from ff_core.schemas import (
+from corvus_core.constants import EvidencePlatform, JobStatus, KapeCategory
+from corvus_core.schemas import (
     CaseCreate,
     CaseRead,
     EvidenceManifest,

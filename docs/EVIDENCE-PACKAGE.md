@@ -2,7 +2,7 @@
 
 ## Overview
 
-Analysts upload a folder or ZIP containing endpoint evidence from Windows, macOS, or Linux systems. ForensicFlow detects the package layout, selects a source adapter, ingests pre-parsed tool output when present, and optionally runs supported parsers against raw collected files.
+Analysts upload a folder or ZIP containing endpoint evidence from Windows, macOS, or Linux systems. Corvus detects the package layout, selects a source adapter, ingests pre-parsed tool output when present, and optionally runs supported parsers against raw collected files.
 
 KAPE packages are supported and can be uploaded directly. The format below is intentionally generic so other collectors and source adapters can produce equivalent packages.
 
@@ -51,7 +51,7 @@ If omitted, hostname is inferred from the folder name and known collector layout
 
 1. Collect endpoint evidence and, when possible, include parser CSV/JSON output.
 2. Copy or ZIP the output directory.
-3. Create case in ForensicFlow → upload package.
+3. Create case in Corvus → upload package.
 4. Monitor ingest job → review Timeline / Object / Disk views.
 
 ## Supported package families

@@ -1,4 +1,4 @@
-"""Map Chainsaw hunt output to ForensicFlow detections and timeline hits."""
+"""Map Chainsaw hunt output to Corvus detections and timeline hits."""
 
 from __future__ import annotations
 

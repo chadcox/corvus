@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Entity, FilesystemNode, TimelineEvent
-from ff_core.schemas import EntityRead, FilesystemNodeRead, GlobalSearchResult, TimelineEventRead
+from corvus_core.schemas import EntityRead, FilesystemNodeRead, GlobalSearchResult, TimelineEventRead
 
 try:
     from opensearchpy import OpenSearch, helpers

@@ -13,7 +13,7 @@ import redis
 from worker.celery_app import celery_app
 from worker.config import settings
 
-REDIS_KEY = "forensicflow:yara:rules:status"
+REDIS_KEY = "corvus:yara:rules:status"
 
 
 def _count_rules(rules_root: Path) -> int:

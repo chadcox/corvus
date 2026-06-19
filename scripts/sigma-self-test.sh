@@ -2,7 +2,7 @@
 # Verify Sigma rule bundle + matcher inside the worker container.
 set -euo pipefail
 
-SERVICE="${SIGMA_TEST_SERVICE:-forensicflow-worker-1}"
+SERVICE="${SIGMA_TEST_SERVICE:-corvus-worker-1}"
 
 echo "== Sigma self-test (service: ${SERVICE}) =="
 

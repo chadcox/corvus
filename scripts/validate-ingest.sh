@@ -50,7 +50,7 @@ if [ -z "$SAMPLE" ] && [ -z "$ZIP" ]; then
   fi
 fi
 
-echo "=== ForensicFlow ingest validation ==="
+echo "=== Corvus ingest validation ==="
 echo "API: $API"
 
 echo "=== Health ==="

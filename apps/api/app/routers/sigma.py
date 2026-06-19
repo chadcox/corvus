@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import EvidenceSource, SigmaDetection
-from ff_core.schemas import SigmaDetectionRead
+from corvus_core.schemas import SigmaDetectionRead
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/sigma", tags=["sigma"])
 

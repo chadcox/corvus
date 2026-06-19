@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.celery_client import celery_app
 from app.chainsaw_rules_status import get_chainsaw_rules_status
-from ff_core.schemas import ChainsawRulesStatusRead
+from corvus_core.schemas import ChainsawRulesStatusRead
 
 router = APIRouter(prefix="/chainsaw/rules", tags=["chainsaw-rules"])
 

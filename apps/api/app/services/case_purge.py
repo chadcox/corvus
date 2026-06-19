@@ -12,7 +12,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.util.evidence_storage import delete_case_evidence_dir, wipe_all_evidence_dirs
-from ff_core.schemas import CasePurgeResult
+from corvus_core.schemas import CasePurgeResult
 
 
 def _case_query(db: Session, *, case_ids: list[UUID] | None, name_prefix: str | None):

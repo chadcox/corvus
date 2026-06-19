@@ -39,7 +39,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="ForensicFlow API",
+    title="Corvus API",
     version=settings.api_version,
     description="Offline endpoint evidence ingest and forensic triage review",
     lifespan=lifespan,
