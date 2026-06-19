@@ -221,6 +221,43 @@ def test_upload_then_list_jobs_workflow(monkeypatch, tmp_path: Path):
         app.dependency_overrides.clear()
 
 
+def test_upload_filename_path_traversal_is_contained(monkeypatch, tmp_path: Path):
+    # H1 regression: a traversal filename must not write outside evidence_root.
+    case_id = uuid.uuid4()
+    db = FakeDb(case_id)
+    evidence_root = tmp_path / "evidence"
+    queued: list[tuple[str, list[str]]] = []
+
+    monkeypatch.setattr(evidence_router.settings, "evidence_root", str(evidence_root))
+
+    def fake_send_task(name: str, args: list[str], **_kwargs):
+        queued.append((name, args))
+        return SimpleNamespace(id=args[0])
+
+    monkeypatch.setattr(evidence_router.celery_app, "send_task", fake_send_task)
+
+    upload = UploadFile(filename="../../../pwned.txt", file=BytesIO(b"demo"))
+    job = run(evidence_router.upload_evidence(case_id=case_id, file=upload, hostname=None, platform=None, db=db))
+
+    assert job.status == "pending"
+    assert not (tmp_path / "pwned.txt").exists()
+    assert not (tmp_path.parent / "pwned.txt").exists()
+    source_id = db.sources[0].id
+    assert (evidence_root / str(case_id) / str(source_id) / "pwned.txt").is_file()
+
+
+def test_upload_filename_that_basenames_empty_is_rejected(monkeypatch, tmp_path: Path):
+    # H1 regression: a pure-traversal filename (no real basename) is a 400, not a 500.
+    case_id = uuid.uuid4()
+    db = FakeDb(case_id)
+    monkeypatch.setattr(evidence_router.settings, "evidence_root", str(tmp_path / "evidence"))
+
+    upload = UploadFile(filename="../../..", file=BytesIO(b"x"))
+    with pytest.raises(HTTPException) as exc:
+        run(evidence_router.upload_evidence(case_id=case_id, file=upload, hostname=None, platform=None, db=db))
+    assert exc.value.status_code == 400
+
+
 def test_validation_ingest_sample_queues_fast_mode_manifest(monkeypatch, tmp_path: Path):
     case_id = uuid.uuid4()
     db = FakeDb(case_id)

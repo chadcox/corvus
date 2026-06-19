@@ -19,6 +19,15 @@ from app.models import User
 from app.routers import auth
 
 
+@pytest.fixture(autouse=True)
+def _reset_pooled_redis():
+    # Service now reuses a module-level Redis client; clear it so each test's
+    # monkeypatched redis.Redis.from_url is honored.
+    auth_service._redis_client = None
+    yield
+    auth_service._redis_client = None
+
+
 @dataclass
 class FakeUser:
     id: uuid.UUID

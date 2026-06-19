@@ -119,8 +119,14 @@ def _username_hash(username: str) -> str:
     return hashlib.sha256(username.encode("utf-8")).hexdigest()[:16]
 
 
+_redis_pool: redis.Redis | None = None
+
+
 def _redis_client() -> redis.Redis:
-    return redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    global _redis_pool
+    if _redis_pool is None:
+        _redis_pool = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    return _redis_pool
 
 
 def _lock_key(ip: str, username: str) -> str:

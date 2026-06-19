@@ -48,7 +48,7 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       DATABASE_URL: postgresql+psycopg://forensicflow:forensicflow@postgres:5432/forensicflow
       OPENSEARCH_URL: http://opensearch:9200
@@ -195,7 +195,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     environment:
       VITE_API_URL: http://localhost:8000
       __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: web
