@@ -7,7 +7,8 @@ if [[ -z "${BASE_REF}" ]]; then
   exit 0
 fi
 
-cd /workspace
+REPO_ROOT="${GITHUB_WORKSPACE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+cd "$REPO_ROOT"
 
 git fetch --no-tags origin "${BASE_REF}" --depth=1 >/dev/null 2>&1 || true
 DIFF_RANGE="origin/${BASE_REF}...HEAD"
