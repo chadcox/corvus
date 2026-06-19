@@ -6,8 +6,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 unzip \
     && rm -rf /var/lib/apt/lists/*
 
-COPY packages/ff_core /app/packages/ff_core
-RUN pip install --no-cache-dir /app/packages/ff_core
+COPY packages/corvus_core /app/packages/corvus_core
+RUN pip install --no-cache-dir /app/packages/corvus_core
 
 COPY apps/api/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt

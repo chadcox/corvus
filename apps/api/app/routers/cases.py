@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.database import get_db
 from app.models import Case, EvidenceSource
 from app.util.evidence_storage import delete_case_evidence_dir
-from ff_core.schemas import CaseCreate, CaseRead
+from corvus_core.schemas import CaseCreate, CaseRead
 
 
 class CaseRename(BaseModel):

@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = (
-        "postgresql+psycopg://forensicflow:forensicflow@localhost:5432/forensicflow"
+        "postgresql+psycopg://corvus:corvus@localhost:5432/corvus"
     )
     search_backend: str = "postgres"
     opensearch_url: str = "http://localhost:9200"
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     auth_bootstrap_admin_username: str = ""
     auth_bootstrap_admin_password: str = ""
     admin_disk_usage_cache_seconds: int = 30
-    docker_compose_project: str = "forensicflow"
+    docker_compose_project: str = "corvus"
     environment: str = "development"
 
     @property
@@ -55,10 +55,15 @@ DEFAULT_AUTH_SECRET = "change-me-dev-auth-secret"
 
 def validate_security_settings(cfg: Settings) -> None:
     env = (cfg.environment or "development").strip().lower()
-    if env in {"prod", "production", "staging"} and cfg.auth_secret_key == DEFAULT_AUTH_SECRET:
-        raise RuntimeError(
-            "AUTH_SECRET_KEY is using the default value in a non-development environment"
-        )
+    if env in {"prod", "production", "staging"}:
+        if cfg.auth_secret_key == DEFAULT_AUTH_SECRET:
+            raise RuntimeError(
+                "AUTH_SECRET_KEY is using the default value in a non-development environment"
+            )
+        if len(cfg.auth_secret_key) < 32:
+            raise RuntimeError(
+                "AUTH_SECRET_KEY must be at least 32 characters in a non-development environment"
+            )
 
 
 settings = Settings()

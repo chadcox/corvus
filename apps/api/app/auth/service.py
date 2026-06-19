@@ -19,6 +19,14 @@ from app.models import User
 bearer_scheme = HTTPBearer(auto_error=False)
 _REVOCATION_FAILURE_WINDOW_SECONDS = 300
 _REVOCATION_FAILURES: deque[float] = deque()
+_redis_client: redis.Redis | None = None
+
+
+def _get_redis() -> redis.Redis:
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+    return _redis_client
 
 
 class TokenPayload(BaseModel):
@@ -48,7 +56,7 @@ def revoke_access_token(token: str) -> None:
     payload = decode_access_token(token)
     ttl_seconds = max(payload.exp - int(datetime.now(UTC).timestamp()), 1)
     try:
-        redis.Redis.from_url(settings.redis_url, decode_responses=True).set(
+        _get_redis().set(
             _revocation_key(payload.jti),
             "1",
             ex=ttl_seconds,
@@ -63,7 +71,7 @@ def revoke_access_token(token: str) -> None:
 
 def is_token_revoked(jti: str) -> bool:
     try:
-        return bool(redis.Redis.from_url(settings.redis_url, decode_responses=True).exists(_revocation_key(jti)))
+        return bool(_get_redis().exists(_revocation_key(jti)))
     except redis.RedisError:
         return bool(settings.auth_revocation_fail_closed)
 

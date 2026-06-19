@@ -1,14 +1,14 @@
-# ForensicFlow
+# Corvus
 
 Offline forensic triage review platform for endpoint investigations. Ingest Windows, macOS, and Linux evidence packages, normalize parsed and raw artifacts through source adapters and forensic parsers, hunt threats with detection engines, and investigate through linked **Timeline**, **Object**, **Disk**, and **Browser** views.
 
-> **Intended use.** ForensicFlow is a defensive DFIR triage tool for authorized
+> **Intended use.** Corvus is a defensive DFIR triage tool for authorized
 > forensic and incident-response work on evidence you are permitted to process.
 > The default Docker stack ships development defaults and is meant for a trusted,
 > localhost-only host — read [SECURITY.md](SECURITY.md) before any shared or
 > exposed deployment. You are responsible for the legality of the evidence you
 > handle and for complying with the licenses of the third-party tools and rules
-> ForensicFlow downloads (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
+> Corvus downloads (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
 ## Architecture
 
@@ -16,7 +16,7 @@ Offline forensic triage review platform for endpoint investigations. Ingest Wind
 apps/api/          FastAPI + PostgreSQL — REST API and ingest orchestration
 apps/worker/       Celery — source adapters, forensic parsers, Sigma/Chainsaw detection, Hindsight
 apps/web/          React + Vite — case management and investigation UI
-packages/ff_core/  Shared Pydantic schemas and constants
+packages/corvus_core/  Shared Pydantic schemas and constants
 ```
 
 Services: `api`, `worker`, `beat` (Sigma rule sync scheduler), `web`, `postgres`, `redis`, `opensearch`, and optional `playwright` for containerized web e2e runs.
@@ -38,7 +38,7 @@ cp .env.example .env
 
 ## Authentication (Local Dev)
 
-ForensicFlow now enforces API and UI authentication by default using local username/password plus JWT bearer tokens.
+Corvus now enforces API and UI authentication by default using local username/password plus JWT bearer tokens.
 
 - Public routes: `/health`, `/health/ready`, `/api/v1`, `/api/v1/auth/login`, docs endpoints.
 - Authenticated routes: `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`, and the analyst workflow routes under `/api/v1/*`.
@@ -76,7 +76,7 @@ For Linux vs Windows Server selection, run the parser smoke tests first — see 
 
 ## Evidence Packages
 
-ForensicFlow ingests folders or ZIPs containing endpoint evidence. Packages can include pre-parsed tool output, raw artifacts, filesystem paths, and optional metadata for Windows, macOS, or Linux sources. KAPE collections are supported, but they are one compatible package shape rather than the only intended source.
+Corvus ingests folders or ZIPs containing endpoint evidence. Packages can include pre-parsed tool output, raw artifacts, filesystem paths, and optional metadata for Windows, macOS, or Linux sources. KAPE collections are supported, but they are one compatible package shape rather than the only intended source.
 
 **Recommended package layout:**
 
@@ -109,7 +109,7 @@ See [docs/EVIDENCE-PACKAGE.md](docs/EVIDENCE-PACKAGE.md) for the full format ref
 
 ## Detections (Chainsaw + Sigma)
 
-During ingest, ForensicFlow runs automated detection on supported event/log artifacts:
+During ingest, Corvus runs automated detection on supported event/log artifacts:
 
 1. **Chainsaw** — [WithSecure Chainsaw](https://github.com/WithSecureLabs/chainsaw) hunts raw Windows `.evtx` files using native rules and Sigma rules in parallel batches.
 2. **In-process Sigma** — Python matcher over EvtxECmd CSV fields (fallback when `CHAINSAW_INCLUDE_SIGMA=false`).
@@ -255,7 +255,7 @@ Evidence sources carry first-class metadata used by adapters and the UI:
 
 ## Open Source Parser Integrations
 
-For macOS/Linux expansion and Windows memory analysis, ForensicFlow includes adapter hooks for Plaso/log2timeline, mac_apt, UAC packages, Volatility3 memory captures, and Velociraptor collection imports. Permissive tools can be installed into the worker image with `INSTALL_OPEN_FORENSICS=true`; Velociraptor is import-only because of AGPL licensing.
+For macOS/Linux expansion and Windows memory analysis, Corvus includes adapter hooks for Plaso/log2timeline, mac_apt, UAC packages, Volatility3 memory captures, and Velociraptor collection imports. Permissive tools can be installed into the worker image with `INSTALL_OPEN_FORENSICS=true`; Velociraptor is import-only because of AGPL licensing.
 
 ### Plaso strategy
 
@@ -335,7 +335,7 @@ docker compose run --rm playwright bash -lc 'npm install && FF_E2E_ADMIN_USERNAM
   - Runs `api`, `worker`, `beat`, and `web` with bind mounts for immediate code updates
   - Uses `uvicorn --reload` for API code reload
 - `dev-tools` profile (`./scripts/rebuild-stack.sh --tools`):
-  - Reuses a prebuilt `WORKER_TOOLS_IMAGE` (default `forensicflow-worker:tools`)
+  - Reuses a prebuilt `WORKER_TOOLS_IMAGE` (default `corvus-worker:tools`)
   - Avoids repeated Plaso/mac_apt rebuilds during day-to-day development
 - Full rebuild mode (`./scripts/rebuild-stack.sh --full`):
   - Rebuilds the original stack from `docker-compose.yml`
@@ -353,7 +353,7 @@ docker compose run --rm playwright bash -lc 'npm install && FF_E2E_ADMIN_USERNAM
 
 Application code is released under the [MIT License](LICENSE).
 
-ForensicFlow may optionally download, install, or integrate with third-party
+Corvus may optionally download, install, or integrate with third-party
 tools, parsers, detection engines, and rule content that remain subject to
 their own licenses and terms. Such components are not relicensed under MIT.
 

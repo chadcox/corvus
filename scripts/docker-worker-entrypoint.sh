@@ -57,7 +57,7 @@ try:
     r = redis.Redis.from_url(settings.redis_url, decode_responses=True)
 
     # Sigma
-    sigma_key = "forensicflow:sigma:rules:status"
+    sigma_key = "corvus:sigma:rules:status"
     raw = r.get(sigma_key)
     current = json.loads(raw) if raw else {}
     if not current.get("rule_count"):
@@ -69,7 +69,7 @@ try:
             print(f"Sigma status initialised: {count} rules")
 
     # Chainsaw
-    cw_key = "forensicflow:chainsaw:rules:status"
+    cw_key = "corvus:chainsaw:rules:status"
     if not r.get(cw_key):
         r_count = len(list(Path(settings.chainsaw_rules_root).rglob("*.yml")))
         m_count  = len(list(Path(settings.chainsaw_mappings_root).rglob("*.yml")))

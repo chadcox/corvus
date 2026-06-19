@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Entity, EvidenceSource, FilesystemNode, IngestJob, SigmaDetection, TimelineEvent
 from app.services.ingest_outcome import build_ingest_outcome
-from ff_core.schemas import IngestOutcomeRead, SourceStats
+from corvus_core.schemas import IngestOutcomeRead, SourceStats
 
 router = APIRouter(tags=["ingest-outcome"])
 

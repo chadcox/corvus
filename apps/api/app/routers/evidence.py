@@ -28,8 +28,8 @@ from app.models import (
 )
 from app.package_extract import PackageExtractError, extract_archive, is_supported_archive
 from app.services.opensearch_service import delete_source_docs
-from ff_core.constants import EvidencePlatform, JobStatus
-from ff_core.schemas import EvidenceManifest, EvidenceSourceRead, IngestJobRead
+from corvus_core.constants import EvidencePlatform, JobStatus
+from corvus_core.schemas import EvidenceManifest, EvidenceSourceRead, IngestJobRead
 
 router = APIRouter(prefix="/cases/{case_id}/evidence", tags=["evidence"])
 
@@ -59,7 +59,9 @@ def _copy_upload_with_hashes(upload: UploadFile, dest: Path) -> tuple[str, str, 
 def _extract_upload(dest: Path, upload: UploadFile) -> tuple[str, str, str] | None:
     """Extract upload and return hashes of the primary uploaded file."""
     dest.mkdir(parents=True, exist_ok=True)
-    filename = upload.filename or "upload.bin"
+    filename = Path(upload.filename or "upload.bin").name
+    if not filename or filename in {".", ".."}:
+        raise PackageExtractError("Invalid upload filename")
     if is_supported_archive(filename):
         archive_path = dest / filename
         hashes = _copy_upload_with_hashes(upload, archive_path)
@@ -676,7 +678,8 @@ def export_file_hashes(
             ])
             yield buf.getvalue()
 
-    name = f"file-hashes-{source.hostname}.csv".replace(" ", "_")
+    safe_host = re.sub(r"[^A-Za-z0-9._-]", "_", source.hostname or "host")
+    name = f"file-hashes-{safe_host}.csv"
     return StreamingResponse(
         generate(),
         media_type="text/csv",

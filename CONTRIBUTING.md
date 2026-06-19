@@ -1,4 +1,4 @@
-# Contributing to ForensicFlow
+# Contributing to Corvus
 
 Thanks for your interest in contributing.
 
@@ -35,7 +35,7 @@ Do **not** open a public issue for vulnerabilities. See [SECURITY.md](SECURITY.m
 
 ## Third-party tools and rules
 
-ForensicFlow integrates third-party forensic tools and detection rules under
+Corvus integrates third-party forensic tools and detection rules under
 their own licenses. When adding or changing a bundled/downloaded component,
 update [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and add the upstream
 license text under `third_party/licenses/`.

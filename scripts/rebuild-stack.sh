@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start or rebuild the ForensicFlow Docker stack.
+# Start or rebuild the Corvus Docker stack.
 #
 # Usage:
 #   ./scripts/rebuild-stack.sh
@@ -65,7 +65,7 @@ if [ ! -f docker-compose.dev.yml ]; then
   exit 1
 fi
 
-echo "=== ForensicFlow stack start ==="
+echo "=== Corvus stack start ==="
 echo "Project: $ROOT"
 echo "Mode: $MODE"
 echo ""

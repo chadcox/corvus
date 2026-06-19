@@ -1,8 +1,8 @@
 from uuid import uuid4
 
 from app.services.ingest_outcome import build_ingest_outcome
-from ff_core.constants import JobStatus
-from ff_core.schemas import SourceStats
+from corvus_core.constants import JobStatus
+from corvus_core.schemas import SourceStats
 
 
 def test_outcome_success_when_job_and_stats_ok():

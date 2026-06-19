@@ -14,11 +14,11 @@ Please include reproduction steps, affected versions/commit, and impact.
 
 ## Supported versions
 
-ForensicFlow is pre-1.0. Only the latest `main` receives security fixes.
+Corvus is pre-1.0. Only the latest `main` receives security fixes.
 
 ## Scope and intended use
 
-ForensicFlow is a **defensive** DFIR triage tool: it ingests and analyzes
+Corvus is a **defensive** DFIR triage tool: it ingests and analyzes
 endpoint evidence and runs detection rules. It is intended for authorized
 forensic and incident-response work on evidence you are permitted to process.
 

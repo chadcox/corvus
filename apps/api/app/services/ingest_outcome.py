@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ff_core.constants import JobStatus
-from ff_core.schemas import IngestCheck, IngestOutcomeRead, SourceStats
+from corvus_core.constants import JobStatus
+from corvus_core.schemas import IngestCheck, IngestOutcomeRead, SourceStats
 
 
 def _check(name: str, passed: bool, detail: str | None = None) -> IngestCheck:

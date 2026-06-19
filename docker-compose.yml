@@ -1,4 +1,4 @@
-name: forensicflow
+name: corvus
 
 services:
   postgres:
@@ -6,9 +6,9 @@ services:
     command:
       ["postgres", "-c", "shared_preload_libraries=timescaledb", "-c", "max_wal_size=4GB"]
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-forensicflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-forensicflow}
-      POSTGRES_DB: ${POSTGRES_DB:-forensicflow}
+      POSTGRES_USER: ${POSTGRES_USER:-corvus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-corvus}
+      POSTGRES_DB: ${POSTGRES_DB:-corvus}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -30,7 +30,7 @@ services:
     environment:
       discovery.type: single-node
       plugins.security.disabled: "true"
-      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-ForensicFlowDev123!}
+      OPENSEARCH_INITIAL_ADMIN_PASSWORD: ${OPENSEARCH_INITIAL_ADMIN_PASSWORD:-CorvusDev123!}
       OPENSEARCH_JAVA_OPTS: ${OPENSEARCH_JAVA_OPTS:--Xms512m -Xmx512m}
     ports:
       - "127.0.0.1:9200:9200"
@@ -48,9 +48,9 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
-      DATABASE_URL: postgresql+psycopg://forensicflow:forensicflow@postgres:5432/forensicflow
+      DATABASE_URL: postgresql+psycopg://corvus:corvus@postgres:5432/corvus
       OPENSEARCH_URL: http://opensearch:9200
       SEARCH_BACKEND: opensearch
       REDIS_URL: redis://redis:6379/0
@@ -68,7 +68,7 @@ services:
       AUTH_TOKEN_EXP_MINUTES: ${AUTH_TOKEN_EXP_MINUTES:-480}
       AUTH_BOOTSTRAP_ADMIN_USERNAME: ${AUTH_BOOTSTRAP_ADMIN_USERNAME:-}
       AUTH_BOOTSTRAP_ADMIN_PASSWORD: ${AUTH_BOOTSTRAP_ADMIN_PASSWORD:-}
-      DOCKER_COMPOSE_PROJECT: ${DOCKER_COMPOSE_PROJECT:-forensicflow}
+      DOCKER_COMPOSE_PROJECT: ${DOCKER_COMPOSE_PROJECT:-corvus}
       CHAINSAW_RULES_ROOT: /opt/chainsaw/rules
       CHAINSAW_MAPPINGS_ROOT: /opt/chainsaw/mappings
       CHAINSAW_ENABLED: ${CHAINSAW_ENABLED:-true}
@@ -109,7 +109,7 @@ services:
         INSTALL_OPEN_FORENSICS: ${INSTALL_OPEN_FORENSICS:-false}
         INSTALL_VOLATILITY3: ${INSTALL_VOLATILITY3:-false}
     environment:
-      DATABASE_URL: postgresql+psycopg://forensicflow:forensicflow@postgres:5432/forensicflow
+      DATABASE_URL: postgresql+psycopg://corvus:corvus@postgres:5432/corvus
       OPENSEARCH_URL: http://opensearch:9200
       SEARCH_BACKEND: opensearch
       REDIS_URL: redis://redis:6379/0
@@ -195,7 +195,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     environment:
       VITE_API_URL: http://localhost:8000
       __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: web

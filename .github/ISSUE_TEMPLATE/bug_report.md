@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a problem with ForensicFlow
+about: Report a problem with Corvus
 labels: bug
 ---
 
@@ -14,7 +14,7 @@ Steps, evidence-package shape (do not attach real evidence), and commands run.
 What you expected to happen.
 
 **Environment**
-- ForensicFlow commit/tag:
+- Corvus commit/tag:
 - Deployment (Docker Compose / Windows worker):
 - OS:
 

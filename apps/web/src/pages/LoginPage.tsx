@@ -34,7 +34,7 @@ export default function LoginPage({ user, onLogin }: Props) {
     <div className="login-wrap">
       <div className="panel login-panel">
         <h1 className="page-title">Sign in</h1>
-        <p className="panel-desc">Use your local ForensicFlow username and password.</p>
+        <p className="panel-desc">Use your local Corvus username and password.</p>
         <form onSubmit={onSubmit} className="create-case-form">
           <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" required />
           <input

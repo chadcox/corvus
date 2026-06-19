@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-ForensicFlow is an offline forensic triage review platform for endpoint investigations. It ingests Windows, macOS, and Linux evidence folders or ZIPs, normalizes parsed and raw artifacts with source adapters and forensic parsers, runs detections, and presents evidence in linked investigation views. KAPE packages are supported, but should be treated as one compatible evidence source rather than the central product definition.
+Corvus is an offline forensic triage review platform for endpoint investigations. It ingests Windows, macOS, and Linux evidence folders or ZIPs, normalizes parsed and raw artifacts with source adapters and forensic parsers, runs detections, and presents evidence in linked investigation views. KAPE packages are supported, but should be treated as one compatible evidence source rather than the central product definition.
 
 Primary services are defined in `docker-compose.yml`:
 
@@ -115,7 +115,7 @@ There is no lint script/config currently defined for the web package, and no pro
 - Case investigation uses primary views for Timeline, Objects, Disk, MFT, and Browser, plus supporting panels for ingest status, detections/rules, search, and source stats.
 - API access is centralized under `apps/web/src/api/client.ts`.
 
-### Shared package (`packages/ff_core`)
+### Shared package (`packages/corvus_core`)
 
 Shared Pydantic schemas and constants used across services.
 
@@ -123,7 +123,7 @@ Shared Pydantic schemas and constants used across services.
 
 - Primary input is an endpoint evidence directory or ZIP containing parsed outputs, raw artifacts, filesystem path data, and optional metadata.
 - Evidence sources have first-class platform/source metadata: `platform`, `collector_version`, `source_type`, `os_version`, `architecture`, `timezone`, and `collected_at`.
-- KAPE collections are supported as one input format, but documentation and UI copy should not frame ForensicFlow as KAPE-only.
+- KAPE collections are supported as one input format, but documentation and UI copy should not frame Corvus as KAPE-only.
 - Ingest priority is: parser CSV/JSON output first, raw artifacts second (`.evtx`, registry hives, prefetch, `$MFT`), then collected file paths/timestamps for filesystem nodes.
 - Evidence is stored under the Docker `evidence_data` volume mounted at `/data/evidence`; samples are mounted read-only from `./samples`.
 - Detection results are shown generically as detections in the UI, with the specific engine (Chainsaw or Sigma) shown on individual match rows.

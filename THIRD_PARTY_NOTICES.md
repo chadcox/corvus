@@ -20,7 +20,7 @@ terms before publishing container images or packaged builds.
 | Eric Zimmerman tools: EvtxECmd, MFTECmd, RECmd, AmcacheParser, PECmd, JLECmd, LECmd | Downloaded ZIP archives into `/opt/eztools` | https://ericzimmerman.github.io/ | Upstream repositories list MIT for the bundled tools | `third_party/licenses/eztools/*-LICENSE*` |
 
 The Sigma Detection Rule License requires attribution to rule authors,
-including when displaying matches. ForensicFlow should preserve rule metadata
+including when displaying matches. Corvus should preserve rule metadata
 such as title, author, id, and source where available in detection output.
 
 Chainsaw is GPL-3.0. If an image or package containing Chainsaw is

@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import get_db
 from app.models import Case
 from app.routers.evidence import _create_ingest_source
-from ff_core.schemas import IngestSampleStartRead
+from corvus_core.schemas import IngestSampleStartRead
 
 router = APIRouter(prefix="/validation", tags=["validation"])
 

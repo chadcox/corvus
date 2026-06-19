@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import IngestJob
-from ff_core.constants import JobStatus
+from corvus_core.constants import JobStatus
 
 router = APIRouter(prefix="/system", tags=["system"])
 

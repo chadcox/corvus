@@ -58,10 +58,10 @@ Run the same components without Linux-only assumptions:
 
 | Component | Path / notes |
 |-----------|----------------|
-| EZ Tools | `C:\ForensicFlow\tools\` — sync via `Get-ZimmermanTools.ps1` |
+| EZ Tools | `C:\Corvus\tools\` — sync via `Get-ZimmermanTools.ps1` |
 | API | Python 3.12 venv, Windows service or IIS reverse proxy |
 | Worker | Celery worker service on same host |
-| Evidence | `D:\ForensicFlow\evidence` |
+| Evidence | `D:\Corvus\evidence` |
 | Postgres / Redis | Native install or Docker Desktop |
 
 Use `docker-compose.windows.yml` pattern (future): API + web in containers optional; **workers on Windows host** with native EZ Tools is simplest for v1.

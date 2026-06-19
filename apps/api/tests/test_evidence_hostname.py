@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app.routers.evidence import _hostname_from_artifacts, _infer_hostname, _platform_for_source
-from ff_core.schemas import EvidenceManifest
+from corvus_core.schemas import EvidenceManifest
 
 
 def test_hostname_from_single_evtx(tmp_path: Path):

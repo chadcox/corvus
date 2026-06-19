@@ -10,7 +10,7 @@ import redis
 
 from worker.config import settings
 
-REDIS_KEY = "forensicflow:sigma:rules:status"
+REDIS_KEY = "corvus:sigma:rules:status"
 
 
 def _client() -> redis.Redis:

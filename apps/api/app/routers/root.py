@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 
 from app.config import settings
-from ff_core.schemas import ApiIndexRead, ApiLink
+from corvus_core.schemas import ApiIndexRead, ApiLink
 
 router = APIRouter(tags=["meta"])
 
@@ -54,4 +54,4 @@ def api_index() -> ApiIndexRead:
                 description="POST — queue bundled sample ingest",
             )
         )
-    return ApiIndexRead(name="ForensicFlow API", version=settings.api_version, links=links)
+    return ApiIndexRead(name="Corvus API", version=settings.api_version, links=links)

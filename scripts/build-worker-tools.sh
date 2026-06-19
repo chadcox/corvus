@@ -3,13 +3,13 @@
 #
 # Usage:
 #   ./scripts/build-worker-tools.sh
-#   ./scripts/build-worker-tools.sh --tag forensicflow-worker:tools
+#   ./scripts/build-worker-tools.sh --tag corvus-worker:tools
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-TAG="${WORKER_TOOLS_IMAGE:-forensicflow-worker:tools}"
+TAG="${WORKER_TOOLS_IMAGE:-corvus-worker:tools}"
 NO_CACHE=0
 
 while [ $# -gt 0 ]; do

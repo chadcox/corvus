@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.models import User
 
+# Compared against when the user is missing/inactive so login timing stays
+# constant regardless of whether the username exists (avoids enumeration).
+_DUMMY_PASSWORD_HASH = bcrypt.hashpw(b"corvus-dummy-password", bcrypt.gensalt()).decode("utf-8")
+
 
 @dataclass(frozen=True)
 class AuthenticatedUser:
@@ -37,6 +41,7 @@ class LocalAuthProvider:
     def authenticate(self, db: Session, username: str, password: str) -> AuthenticatedUser | None:
         user = db.query(User).filter(User.username == username).first()
         if not user or not user.is_active:
+            self.verify_password(password, _DUMMY_PASSWORD_HASH)
             return None
         if not self.verify_password(password, user.password_hash):
             return None

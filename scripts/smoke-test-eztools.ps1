@@ -1,6 +1,6 @@
 # Phase 0 gate: verify EZ Tools on Windows Server
 param(
-    [string]$EzToolsRoot = "C:\ForensicFlow\tools"
+    [string]$EzToolsRoot = "C:\Corvus\tools"
 )
 
 $tools = @(

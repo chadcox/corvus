@@ -59,7 +59,7 @@ export default function App() {
       <header className="app-header">
         <Link to="/" className="brand">
           <BrandMark />
-          ForensicFlow
+          Corvus
         </Link>
         <span className="header-divider" aria-hidden="true" />
         <span className="tagline">

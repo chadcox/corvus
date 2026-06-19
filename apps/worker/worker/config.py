@@ -5,7 +5,7 @@ class WorkerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = (
-        "postgresql+psycopg://forensicflow:forensicflow@localhost:5432/forensicflow"
+        "postgresql+psycopg://corvus:corvus@localhost:5432/corvus"
     )
     search_backend: str = "postgres"
     opensearch_url: str = "http://localhost:9200"

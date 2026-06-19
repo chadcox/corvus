@@ -6,7 +6,7 @@ from celery.signals import worker_ready
 from worker.config import settings
 from worker.tasks.recovery import reconcile_orphaned_ingest_jobs
 
-celery_app = Celery("forensicflow", broker=settings.redis_url, backend=settings.redis_url)
+celery_app = Celery("corvus", broker=settings.redis_url, backend=settings.redis_url)
 
 _beat: dict = {}
 if settings.sigma_refresh_interval_hours > 0:

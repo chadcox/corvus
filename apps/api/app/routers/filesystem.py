@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import EvidenceFileHash, EvidenceSource, FilesystemNode
-from ff_core.schemas import FilesystemNodeRead
+from corvus_core.schemas import FilesystemNodeRead
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/filesystem", tags=["filesystem"])
 

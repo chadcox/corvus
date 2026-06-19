@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ff_core.constants import KapeCategory, KAPE_LOG_CSV_HINTS, KAPE_MODULE_CSV_HINTS
+from corvus_core.constants import KapeCategory, KAPE_LOG_CSV_HINTS, KAPE_MODULE_CSV_HINTS
 from worker.eztools.runner import REGISTRY_HIVE_NAMES
 from worker.hindsight.profiles import find_browser_profiles
 

@@ -10,7 +10,7 @@ import redis
 
 from worker.config import settings
 
-REDIS_KEY = "forensicflow:chainsaw:rules:status"
+REDIS_KEY = "corvus:chainsaw:rules:status"
 
 
 def write_status(**fields: Any) -> None:

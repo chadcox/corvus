@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Entity, EvidenceSource, TimelineEvent
-from ff_core.schemas import EntityRead, TimelineEventRead
+from corvus_core.schemas import EntityRead, TimelineEventRead
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/entities", tags=["entities"])
 
