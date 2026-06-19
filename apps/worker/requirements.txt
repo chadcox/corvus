@@ -6,4 +6,4 @@ pydantic-settings>=2.14.1
 pyyaml>=6.0
 opensearch-py>=3.2.0
 yara-python>=4.5
-pytest>=9.0
+pytest>=9.1.1
