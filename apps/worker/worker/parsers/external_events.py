@@ -47,18 +47,78 @@ ARTIFACT_KEYS = (
 )
 
 
-def _coerce_timestamp(value: Any) -> datetime | None:
-    if value is None:
+# Upper bounds used to infer the unit of a bare numeric epoch. Each bound is
+# the value that unit reaches around the year 5138, so a realistic forensic
+# timestamp in one unit can never be mistaken for the next unit up.
+_EPOCH_SECONDS_MAX = 10**11
+_EPOCH_MILLISECONDS_MAX = 10**14
+_EPOCH_MICROSECONDS_MAX = 10**17
+
+# 100-nanosecond intervals between 1601-01-01 (FILETIME/WebKit epoch) and
+# 1970-01-01 (POSIX epoch).
+_FILETIME_EPOCH_DELTA = 116_444_736_000_000_000
+
+# Plaso serialises dfDateTime values as nested objects tagged with the class
+# that defines their epoch and unit, e.g.
+# ``{"__class_name__": "Filetime", "timestamp": 129638643088953339}``.
+_PLASO_DATE_TIME_SCALES: dict[str, tuple[float, int]] = {
+    # class name -> (units per second, epoch offset in those units)
+    "Filetime": (10_000_000, _FILETIME_EPOCH_DELTA),
+    "WebKitTime": (1_000_000, 11_644_473_600_000_000),
+    "PosixTime": (1, 0),
+    "PosixTimeInMilliseconds": (1_000, 0),
+    "PosixTimeInMicroseconds": (1_000_000, 0),
+    "PosixTimeInNanoSeconds": (1_000_000_000, 0),
+    "JavaTime": (1_000, 0),
+}
+
+
+def _from_epoch_seconds(seconds: float) -> datetime | None:
+    try:
+        return datetime.fromtimestamp(seconds, tz=timezone.utc)
+    except (OSError, OverflowError, ValueError):
         return None
+
+
+def _coerce_numeric_timestamp(value: int | float) -> datetime | None:
+    """Interpret a bare number as a POSIX epoch, inferring its unit by scale."""
+    magnitude = abs(value)
+    if magnitude < _EPOCH_SECONDS_MAX:
+        divisor = 1
+    elif magnitude < _EPOCH_MILLISECONDS_MAX:
+        divisor = 1_000
+    elif magnitude < _EPOCH_MICROSECONDS_MAX:
+        divisor = 1_000_000
+    else:
+        divisor = 1_000_000_000
+    return _from_epoch_seconds(value / divisor)
+
+
+def _coerce_plaso_date_time(value: dict[str, Any]) -> datetime | None:
+    """Decode a Plaso/dfDateTime ``DateTimeValues`` object.
+
+    Unknown classes return ``None`` so the caller can fall back to another
+    field rather than inventing a date from an unrecognised epoch.
+    """
+    raw = value.get("timestamp")
+    if not isinstance(raw, (int, float)) or isinstance(raw, bool):
+        # Some classes (TimeElements) carry an ISO string instead.
+        text = value.get("string") or value.get("time_string")
+        return _parse_timestamp(str(text)) if text else None
+    scale = _PLASO_DATE_TIME_SCALES.get(str(value.get("__class_name__")))
+    if scale is None:
+        return None
+    units_per_second, epoch_offset = scale
+    return _from_epoch_seconds((raw - epoch_offset) / units_per_second)
+
+
+def _coerce_timestamp(value: Any) -> datetime | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, dict):
+        return _coerce_plaso_date_time(value)
     if isinstance(value, (int, float)):
-        if value > 10_000_000_000_000_000:
-            value = value / 1_000_000
-        elif value > 10_000_000_000:
-            value = value / 1000
-        try:
-            return datetime.fromtimestamp(value, tz=timezone.utc)
-        except (OSError, OverflowError, ValueError):
-            return None
+        return _coerce_numeric_timestamp(value)
     return _parse_timestamp(str(value))
 
 
@@ -72,9 +132,15 @@ def _first_value(row: dict[str, Any], keys: tuple[str, ...]) -> Any:
 
 
 def _pick_timestamp(row: dict[str, Any]) -> datetime | None:
-    value = _first_value(row, TIMESTAMP_KEYS)
-    if value is not None:
-        ts = _coerce_timestamp(value)
+    # Try every preferred key, not just the first one present: a row can carry
+    # a rich-but-undecodable value (Plaso's ``date_time`` object) alongside a
+    # plain epoch in a lower-priority field.
+    lower_to_key = {str(k).lower(): k for k in row}
+    for key in TIMESTAMP_KEYS:
+        actual = lower_to_key.get(key.lower())
+        if actual is None or row.get(actual) in (None, ""):
+            continue
+        ts = _coerce_timestamp(row[actual])
         if ts:
             return ts
     for key, value in row.items():

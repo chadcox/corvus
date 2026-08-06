@@ -1582,6 +1582,11 @@ button.stat-card--action.active {
   color: #fcd34d;
 }
 
+.os-badge.os-disk {
+  border-color: rgba(168, 85, 247, 0.35);
+  color: #d8b4fe;
+}
+
 .case-card-id {
   font-size: 0.6875rem;
   color: var(--muted);

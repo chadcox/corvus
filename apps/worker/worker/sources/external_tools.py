@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import shutil
 import subprocess
 from pathlib import Path
+from tempfile import mkdtemp
 
 from worker.config import settings
 
@@ -44,19 +45,28 @@ def plaso_available() -> bool:
 
 def _plaso_parsers_for_platform(platform: str) -> str:
     target = (platform or "").lower()
+    if target == "disk":
+        return settings.plaso_disk_parsers
     if target == "macos":
         return settings.plaso_macos_parsers
     if target == "linux":
         return settings.plaso_linux_parsers
+    if target == "windows":
+        return settings.plaso_windows_parsers
     return settings.plaso_unknown_parsers
 
 
 def _plaso_family_spec_for_platform(platform: str) -> str:
     target = (platform or "").lower()
+    if target == "disk":
+        # Single family: a disk image must not be re-read once per family.
+        return ""
     if target == "macos":
         return settings.plaso_macos_families
     if target == "linux":
         return settings.plaso_linux_families
+    if target == "windows":
+        return settings.plaso_windows_families
     return settings.plaso_unknown_families
 
 
@@ -80,24 +90,30 @@ def _parse_plaso_families(spec: str) -> list[tuple[str, str]]:
 
 def _run_plaso_family(
     package_dir: Path,
-    output_dir: Path,
+    work_dir: Path,
     *,
     label: str,
     parsers: str,
+    source_args: list[str] | None = None,
 ) -> tuple[Path | None, str | None]:
-    storage = output_dir / f"timeline-{label}.plaso"
-    jsonl = output_dir / f"plaso-{label}.jsonl"
+    storage = work_dir / f"timeline-{label}.plaso"
+    jsonl = work_dir / f"plaso-{label}.jsonl"
     ok, err = run_command(
         [
             settings.plaso_log2timeline_bin,
             "--status_view",
             "none",
+            # Without an explicit log file plaso writes one into the current
+            # working directory, which is read-only in the worker image.
+            "--logfile",
+            str(work_dir / f"log2timeline-{label}.log.gz"),
             "--storage-file",
             str(storage),
             "--workers",
             str(settings.plaso_workers),
             "--parsers",
             parsers,
+            *(source_args or []),
             str(package_dir),
         ],
         timeout=settings.plaso_timeout_seconds,
@@ -109,6 +125,8 @@ def _run_plaso_family(
             settings.plaso_psort_bin,
             "--status_view",
             "none",
+            "--logfile",
+            str(work_dir / f"psort-{label}.log.gz"),
             "-o",
             "json_line",
             "-w",
@@ -122,55 +140,70 @@ def _run_plaso_family(
     return jsonl, None
 
 
-def run_plaso(package_dir: Path, output_dir: Path, *, platform: str) -> tuple[Path | None, str | None]:
+def run_plaso(
+    package_dir: Path,
+    output_dir: Path,
+    *,
+    platform: str,
+    source_args: list[str] | None = None,
+) -> tuple[Path | None, str | None]:
     output_dir.mkdir(parents=True, exist_ok=True)
     jsonl = output_dir / "plaso.jsonl"
-    if settings.plaso_parallel_enabled:
-        families = _parse_plaso_families(_plaso_family_spec_for_platform(platform))
-        if len(families) >= 2:
-            max_jobs = max(1, settings.plaso_parallel_jobs)
-            outputs: dict[str, Path] = {}
-            errors: list[str] = []
-            with ThreadPoolExecutor(max_workers=max_jobs) as pool:
-                futures = {
-                    pool.submit(
-                        _run_plaso_family,
-                        package_dir,
-                        output_dir,
-                        label=label,
-                        parsers=parsers,
-                    ): label
-                    for label, parsers in families
-                }
-                for future in as_completed(futures):
-                    out, err = future.result()
-                    label = futures[future]
-                    if out:
-                        outputs[label] = out
-                    elif err:
-                        errors.append(err)
-            merged_parts = [outputs[label] for label, _ in families if label in outputs]
-            if not merged_parts:
-                return None, " | ".join(errors)[:1000] if errors else "Plaso produced no outputs"
-            with jsonl.open("w", encoding="utf-8") as merged:
-                for part in merged_parts:
-                    with part.open("r", encoding="utf-8", errors="replace") as src:
-                        shutil.copyfileobj(src, merged)
-            return jsonl, None
+    # Intermediate storage files, per-family JSONL and plaso logs are kept in a
+    # scratch directory outside output_dir: the caller re-scans output_dir with
+    # rglob, so leaving the parts behind would ingest every event twice.
+    work_dir = Path(mkdtemp(prefix="plaso-", dir=str(output_dir.parent)))
+    try:
+        if settings.plaso_parallel_enabled:
+            families = _parse_plaso_families(_plaso_family_spec_for_platform(platform))
+            if len(families) >= 2:
+                max_jobs = max(1, settings.plaso_parallel_jobs)
+                outputs: dict[str, Path] = {}
+                errors: list[str] = []
+                with ThreadPoolExecutor(max_workers=max_jobs) as pool:
+                    futures = {
+                        pool.submit(
+                            _run_plaso_family,
+                            package_dir,
+                            work_dir,
+                            label=label,
+                            parsers=parsers,
+                            source_args=source_args,
+                        ): label
+                        for label, parsers in families
+                    }
+                    for future in as_completed(futures):
+                        out, err = future.result()
+                        label = futures[future]
+                        if out:
+                            outputs[label] = out
+                        elif err:
+                            errors.append(err)
+                merged_parts = [outputs[label] for label, _ in families if label in outputs]
+                if not merged_parts:
+                    return None, " | ".join(errors)[:1000] if errors else "Plaso produced no outputs"
+                with jsonl.open("w", encoding="utf-8") as merged:
+                    for part in merged_parts:
+                        with part.open("r", encoding="utf-8", errors="replace") as src:
+                            shutil.copyfileobj(src, merged)
+                return jsonl, None
 
-    single_label = "full"
-    single_parsers = _plaso_parsers_for_platform(platform)
-    out, err = _run_plaso_family(
-        package_dir,
-        output_dir,
-        label=single_label,
-        parsers=single_parsers,
-    )
-    if not out:
-        return None, err
-    with out.open("r", encoding="utf-8", errors="replace") as src, jsonl.open("w", encoding="utf-8") as merged:
-        shutil.copyfileobj(src, merged)
-    return jsonl, None
+        single_label = "full"
+        single_parsers = _plaso_parsers_for_platform(platform)
+        out, err = _run_plaso_family(
+            package_dir,
+            work_dir,
+            label=single_label,
+            parsers=single_parsers,
+            source_args=source_args,
+        )
+        if not out:
+            return None, err
+        with out.open("r", encoding="utf-8", errors="replace") as src, jsonl.open("w", encoding="utf-8") as merged:
+            shutil.copyfileobj(src, merged)
+        return jsonl, None
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def mac_apt_available() -> bool:

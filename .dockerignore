@@ -1,0 +1,14 @@
+# Shared build context exclusions for apps/api, apps/worker, and apps/web Dockerfiles
+# (all three build from the repository root).
+
+# Host node_modules must never reach the image. apps/web/Dockerfile installs
+# dependencies inside node:26-alpine (musl), and the later `COPY apps/web ./`
+# would otherwise overwrite them with the host's glibc tree, breaking native
+# bindings such as @rolldown/binding-linux-x64-*.
+**/node_modules
+
+.git
+.env
+**/__pycache__
+**/*.pyc
+apps/web/dist

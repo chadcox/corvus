@@ -14,6 +14,8 @@ Primary services are defined in `docker-compose.yml`:
 - `web`: React + Vite UI on port 5173.
 - `postgres` and `redis`: persistence and Celery broker/backend.
 
+For detailed architecture (module guide, ingest pipeline trace, router inventory, gotchas, navigation guide), see [docs/CODEBASE_MAP.md](docs/CODEBASE_MAP.md).
+
 ## Commands
 
 ### Run the stack

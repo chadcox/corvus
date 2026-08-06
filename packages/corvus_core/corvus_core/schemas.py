@@ -34,6 +34,10 @@ class EvidenceManifest(BaseModel):
     kape_version: str | None = None
     modules_run: list[str] = Field(default_factory=list)
     timezone: str | None = None
+    # Disk image specific fields
+    disk_image_path: str | None = Field(default=None, description="Path to E01/RAW image within package")
+    disk_image_size: int | None = Field(default=None, description="Original disk image size in bytes")
+    disk_image_hash_sha256: str | None = Field(default=None, description="SHA256 of disk image")
 
     model_config = {"extra": "allow"}
 

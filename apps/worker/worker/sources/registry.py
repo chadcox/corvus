@@ -3,6 +3,7 @@ from typing import Any
 from uuid import UUID
 
 from worker.sources.base import ProgressCallback, SourceAdapter
+from worker.sources.disk_image import DiskImageAdapter
 from worker.sources.generic import GenericDirectoryAdapter
 from worker.sources.kape_compat import KapeCompatAdapter
 from worker.sources.mac_apt import MacAptAdapter
@@ -18,6 +19,7 @@ _ADAPTERS: tuple[SourceAdapter, ...] = (
     Volatility3Adapter(),
     VelociraptorImportAdapter(),
     MacAptAdapter(),
+    DiskImageAdapter(),
     PlasoAdapter(),
     GenericDirectoryAdapter(),
 )

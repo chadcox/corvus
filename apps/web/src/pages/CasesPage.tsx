@@ -31,7 +31,7 @@ export default function CasesPage() {
   const [caseEvidence, setCaseEvidence] = useState<Record<string, EvidenceSource[]>>({});
 
   const summarizePlatforms = (sources: EvidenceSource[]): string[] => {
-    const preferred = ["windows", "linux", "macos", "memory"];
+    const preferred = ["windows", "linux", "macos", "memory", "disk"];
     const seen = new Set<string>();
     for (const src of sources) {
       const platform = (src.platform || "unknown").toLowerCase();
@@ -170,7 +170,7 @@ export default function CasesPage() {
                   )}
                   {summarizePlatforms(caseEvidence[c.id] ?? []).map((platform) => (
                     <span key={`${c.id}-${platform}`} className={`os-badge os-${platform}`}>
-                      {platform === "macos" ? "macOS" : platform === "memory" ? "Memory" : platform}
+                      {platform === "macos" ? "macOS" : platform === "memory" ? "Memory" : platform === "disk" ? "Disk" : platform}
                     </span>
                   ))}
                 </div>

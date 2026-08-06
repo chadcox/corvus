@@ -14,6 +14,7 @@ class EvidencePlatform(StrEnum):
     MACOS = "macos"
     LINUX = "linux"
     MEMORY = "memory"
+    DISK = "disk"
 
 
 class KapeCategory(StrEnum):

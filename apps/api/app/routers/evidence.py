@@ -121,6 +121,9 @@ def _normalize_platform(value: str | None) -> str:
         "memory": EvidencePlatform.MEMORY,
         "mem": EvidencePlatform.MEMORY,
         "ram": EvidencePlatform.MEMORY,
+        "disk": EvidencePlatform.DISK,
+        "disk_image": EvidencePlatform.DISK,
+        "e01": EvidencePlatform.DISK,
     }
     return aliases.get(normalized, EvidencePlatform.UNKNOWN)
 

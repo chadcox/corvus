@@ -1,6 +1,10 @@
 from pathlib import Path
 from typing import Any
 
+# Corvus scratch directories written during ingest. They are tool output, not
+# collected evidence, so they must never appear in the evidence filesystem tree.
+SCRATCH_DIR_NAMES = ("_ff_parsed", "_ff_mounted")
+
 
 def build_filesystem_nodes(
     collection_root: Path,
@@ -15,6 +19,8 @@ def build_filesystem_nodes(
 
     for path in sorted(root_path.rglob("*")):
         rel = path.relative_to(root_path)
+        if any(part in SCRATCH_DIR_NAMES for part in rel.parts):
+            continue
         full = "/" + str(rel).replace("\\", "/")
         parent = "/" + str(rel.parent).replace("\\", "/") if rel.parent != Path(".") else None
         if parent == "/.":

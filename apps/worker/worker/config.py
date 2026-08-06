@@ -66,6 +66,13 @@ class WorkerSettings(BaseSettings):
         "db=sqlite,plist,jsonl;"
         "fs=filestat"
     )
+    plaso_windows_families: str = (
+        "win=winreg,winevtx,winevt,prefetch,lnk,custom_destinations,olecf,"
+        "recycle_bin,recycle_bin_info2,winjob,windefender_history,rplog;"
+        "db=sqlite,esedb,jsonl,msiecf;"
+        "fs=filestat,mft,usnjrnl;"
+        "web=chrome_cache,firefox_cache2"
+    )
     plaso_macos_parsers: str = (
         "asl_log,bsm_log,utmpx,sqlite,plist,binary_cookies,systemd_journal,"
         "fseventsd,spotlight_storedb,unified_logging,text,filestat"
@@ -75,6 +82,19 @@ class WorkerSettings(BaseSettings):
     )
     plaso_unknown_parsers: str = (
         "systemd_journal,utmp,utmpx,asl_log,bsm_log,sqlite,plist,jsonl,text,filestat"
+    )
+    plaso_windows_parsers: str = (
+        "winreg,winevtx,winevt,prefetch,lnk,custom_destinations,olecf,recycle_bin,"
+        "recycle_bin_info2,winjob,windefender_history,rplog,msiecf,esedb,mft,usnjrnl,"
+        "filestat,sqlite,jsonl,text,chrome_cache,firefox_cache2"
+    )
+    # Disk images are scanned in a single pass: every extra family would re-read
+    # the whole image, so the disk profile is one union list covering all OSes.
+    plaso_disk_parsers: str = (
+        "winreg,winevtx,winevt,prefetch,lnk,custom_destinations,olecf,recycle_bin,"
+        "recycle_bin_info2,winjob,windefender_history,rplog,msiecf,esedb,mft,usnjrnl,"
+        "filestat,sqlite,plist,jsonl,text,systemd_journal,utmp,utmpx,asl_log,bsm_log,"
+        "fseventsd,spotlight_storedb,binary_cookies,chrome_cache,firefox_cache2"
     )
     plaso_timeout_seconds: int = 1800
     mac_apt_enabled: bool = True

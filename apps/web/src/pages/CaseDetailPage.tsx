@@ -39,6 +39,7 @@ function sourcePlatformLabel(platform: string): string {
   if (platform === "windows") return "Windows";
   if (platform === "linux") return "Linux";
   if (platform === "memory") return "Memory";
+  if (platform === "disk") return "Disk image (E01/RAW)";
   return "Unknown platform";
 }
 
@@ -545,6 +546,7 @@ export default function CaseDetailPage() {
                 <option value="macos">macOS</option>
                 <option value="linux">Linux</option>
                 <option value="memory">Memory</option>
+                <option value="disk">Disk image (E01/RAW)</option>
               </select>
               <input
                 ref={fileInputRef}

@@ -2,6 +2,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from worker.sources.registry import select_source_adapter
+from worker.sources.disk_image import DiskImageAdapter
 from worker.sources.generic import GenericDirectoryAdapter
 from worker.sources.uac import UacImportAdapter
 
@@ -111,3 +112,39 @@ def test_volatility3_adapter_selected_for_memory_platform(tmp_path: Path):
     (tmp_path / "capture.raw").write_bytes(b"fake")
     adapter = select_source_adapter(tmp_path, platform="memory", collector="import")
     assert adapter.name == "volatility3"
+
+
+def test_disk_image_adapter_selected_for_disk_platform(tmp_path: Path):
+    (tmp_path / "disk.E01").write_bytes(b"fake")
+    adapter = select_source_adapter(tmp_path, platform="disk", collector="import")
+    assert adapter.name == "disk_image"
+
+
+def test_volatility3_adapter_preferred_for_raw_windows_image(tmp_path: Path):
+    """Volatility3 takes priority for .raw/.img files on Windows (memory images)."""
+    (tmp_path / "evidence.raw").write_bytes(b"fake")
+    adapter = select_source_adapter(tmp_path, platform="windows", collector="import")
+    assert adapter.name == "volatility3"
+
+
+def test_disk_image_adapter_selected_for_disk_image_with_explicit_platform(tmp_path: Path):
+    """DiskImageAdapter is selected when platform is explicitly 'disk'."""
+    (tmp_path / "evidence.raw").write_bytes(b"fake")
+    adapter = select_source_adapter(tmp_path, platform="disk", collector="import")
+    assert adapter.name == "disk_image"
+
+
+def test_disk_image_adapter_selected_for_collector(tmp_path: Path):
+    (tmp_path / "image.E01").write_bytes(b"fake")
+    adapter = select_source_adapter(tmp_path, platform="windows", collector="ewf")
+    assert adapter.name == "disk_image"
+
+
+def test_disk_image_adapter_selected_for_source_type_manifest(tmp_path: Path):
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        '{"source_type": "disk_image", "disk_image_path": "image.E01"}',
+        encoding="utf-8",
+    )
+    adapter = select_source_adapter(tmp_path, platform="unknown", collector="import")
+    assert adapter.name == "disk_image"
