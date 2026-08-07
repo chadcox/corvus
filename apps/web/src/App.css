@@ -2668,6 +2668,22 @@ button.stat-card--action.active {
   overflow-wrap: anywhere;
 }
 
+.confirm-dialog {
+  width: min(480px, 100%);
+}
+
+.confirm-dialog-body {
+  margin-bottom: 1rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
 /* ── Panel height alignment ────────────────────────────── */
 
 .grid-2-wide-left,

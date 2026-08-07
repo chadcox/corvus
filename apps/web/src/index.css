@@ -148,6 +148,17 @@ button.ghost:hover:not(:disabled) {
   box-shadow: none;
 }
 
+button.danger {
+  background: var(--danger);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--danger-bright, var(--danger));
+  box-shadow: 0 0 0 3px var(--danger-dim);
+}
+
 input,
 select {
   background: var(--bg-elevated);
