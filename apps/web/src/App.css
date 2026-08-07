@@ -1624,6 +1624,51 @@ button.stat-card--action.active {
   min-width: 200px;
 }
 
+/* Login form: stack fields vertically with visible labels */
+.login-panel .create-case-form {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.login-panel .create-case-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.field-label {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  width: 100%;
+  padding-right: 2.4rem;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.2rem;
+  color: var(--muted);
+}
+
+.password-toggle:hover {
+  color: var(--text);
+  background: none;
+  box-shadow: none;
+}
+
 .empty-state {
   padding: 2.5rem 1.5rem;
   text-align: center;
