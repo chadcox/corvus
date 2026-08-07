@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AdminJob, AdminOverview, api, AuthUser, Case, DetectionRulesStatus, EvidenceSource, ProjectContainer, SystemStatus, YaraRulesStatus } from "../api/client";
 import AdminUsersPage from "./AdminUsersPage";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 type Props = {
   me: AuthUser;
@@ -29,6 +30,7 @@ export default function ControlPanelPage({ me }: Props) {
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsTitle, setLogsTitle] = useState("");
   const [logsText, setLogsText] = useState("");
+  const [confirmOp, setConfirmOp] = useState<null | { kind: "bulk-delete" } | { kind: "reindex-all" }>(null);
 
   if (me.role !== "administrator") {
     return <div className="alert alert-error">Forbidden (403): administrator role required.</div>;
@@ -354,15 +356,7 @@ export default function ControlPanelPage({ me }: Props) {
         </div>
         <button
           disabled={runningOp !== null || bulkDeleteCaseIds.length === 0}
-          onClick={() => {
-            if (!window.confirm(`Delete ${bulkDeleteCaseIds.length} selected case(s)? This cannot be undone.`)) return;
-            void doOp("bulk-delete-cases", async () => {
-              const result = await api.bulkDeleteCases(bulkDeleteCaseIds);
-              setBulkDeleteCaseIds([]);
-              await refreshCases();
-              return result;
-            });
-          }}
+          onClick={() => setConfirmOp({ kind: "bulk-delete" })}
         >
           {runningOp === "bulk-delete-cases" ? "Deleting…" : `Delete Selected Cases (${bulkDeleteCaseIds.length})`}
         </button>
@@ -405,10 +399,7 @@ export default function ControlPanelPage({ me }: Props) {
             </button>
             <button
               disabled={runningOp !== null}
-              onClick={() => {
-                if (!window.confirm("Reindex all sources? This can take time.")) return;
-                void doOp("reindex-all", () => api.reindexSearch());
-              }}
+              onClick={() => setConfirmOp({ kind: "reindex-all" })}
             >
               {runningOp === "reindex-all" ? "Reindexing…" : "Full Reindex"}
             </button>
@@ -443,6 +434,33 @@ export default function ControlPanelPage({ me }: Props) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmOp !== null}
+        title={confirmOp?.kind === "bulk-delete" ? "Delete selected cases" : "Reindex all sources"}
+        message={
+          confirmOp?.kind === "bulk-delete"
+            ? `Delete ${bulkDeleteCaseIds.length} selected case(s)? This cannot be undone.`
+            : "Reindex all sources? This can take time."
+        }
+        confirmLabel={confirmOp?.kind === "bulk-delete" ? "Delete" : "Reindex"}
+        danger={confirmOp?.kind === "bulk-delete"}
+        onCancel={() => setConfirmOp(null)}
+        onConfirm={() => {
+          const op = confirmOp;
+          setConfirmOp(null);
+          if (op?.kind === "bulk-delete") {
+            void doOp("bulk-delete-cases", async () => {
+              const result = await api.bulkDeleteCases(bulkDeleteCaseIds);
+              setBulkDeleteCaseIds([]);
+              await refreshCases();
+              return result;
+            });
+          } else if (op?.kind === "reindex-all") {
+            void doOp("reindex-all", () => api.reindexSearch());
+          }
+        }}
+      />
     </div>
   );
 }
