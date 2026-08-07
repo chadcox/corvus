@@ -8,6 +8,15 @@ type Props = {
   me: AuthUser;
 };
 
+function friendlyContainerError(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("docker") || lower.includes("daemon") || lower.includes("socket"))
+    return "Container status requires the Docker daemon, which is not available in this deployment. Container management features are unavailable.";
+  if (lower.includes("internal server error") || lower.includes("500"))
+    return "Container status is unavailable right now. This usually means the Docker daemon is not running or not reachable from the API.";
+  return raw;
+}
+
 export default function ControlPanelPage({ me }: Props) {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [adminOverview, setAdminOverview] = useState<AdminOverview | null>(null);
@@ -282,7 +291,7 @@ export default function ControlPanelPage({ me }: Props) {
 
       <div className="panel animate-in animate-in-delay-2" style={{ marginBottom: "1rem" }}>
         <h2>Container status</h2>
-        {containersError && <p className="panel-desc">Container status unavailable: {containersError}</p>}
+        {containersError && <p className="panel-desc">Container status unavailable: {friendlyContainerError(containersError)}</p>}
         {!containersError && containers.length === 0 && <p className="panel-desc">No project containers found.</p>}
         {containers.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "0.75rem" }}>
