@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, FileHashes, FilePreview, FilesystemNode } from "../api/client";
 import ResizableSplit from "./ResizableSplit";
+import ConfirmDialog from "./ConfirmDialog";
 
 type Props = { caseId: string; sourceId: string; focusPath?: string | null };
 
@@ -25,6 +26,7 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewOffset, setPreviewOffset] = useState(0);
+  const [confirmDownload, setConfirmDownload] = useState(false);
 
   useEffect(() => {
     if (focusPath) {
@@ -242,15 +244,7 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
                 type="button"
                 className="secondary"
                 style={{ marginTop: "0.45rem", width: "100%", fontSize: "0.75rem", textAlign: "center", padding: "0.36rem 0.5rem" }}
-                onClick={() => {
-                  const ok = window.confirm(
-                    `Warning: This file may contain malware or other harmful content.\n\n` +
-                    `Only download to a controlled forensic analysis environment.\n\n` +
-                    `Do you want to continue downloading "${selected.name}"?`
-                  );
-                  if (!ok) return;
-                  window.location.href = api.filesystemFileDownloadUrl(caseId, sourceId, selected.id);
-                }}
+                onClick={() => setConfirmDownload(true)}
               >
                 Download file
               </button>
@@ -299,6 +293,26 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
           </div>
         )}
       </div>}
+      />
+
+      <ConfirmDialog
+        open={confirmDownload}
+        title="Download file"
+        message={
+          <>
+            Warning: This file may contain malware or other harmful content. Only download to a controlled forensic
+            analysis environment. Do you want to continue downloading <strong>"{selected?.name}"</strong>?
+          </>
+        }
+        confirmLabel="Download"
+        danger
+        onCancel={() => setConfirmDownload(false)}
+        onConfirm={() => {
+          setConfirmDownload(false);
+          if (selected) {
+            window.location.href = api.filesystemFileDownloadUrl(caseId, sourceId, selected.id);
+          }
+        }}
       />
     </div>
   );
