@@ -19,6 +19,7 @@ import IngestStatusPanel from "../components/IngestStatusPanel";
 import SigmaFindingsPanel from "../components/SigmaFindingsPanel";
 import ObjectView from "../components/ObjectView";
 import TimelineView from "../components/TimelineView";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 type Tab = "timeline" | "object" | "disk" | "mft" | "browser";
 type StatPivot = "events" | "objects" | "paths" | "sigma" | "mft" | "browser";
@@ -136,6 +137,7 @@ export default function CaseDetailPage() {
   const [hashInfo, setHashInfo] = useState<EvidenceHashes | null>(null);
   const [hashingFiles, setHashingFiles] = useState(false);
   const [scanningYara, setScanningYara] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<null | "cancel" | "hash" | "yara">(null);
   const [detections, setDetections] = useState<SigmaDetection[]>([]);
   const [sourceInfoOpen, setSourceInfoOpen] = useState(false);
   const [sourceInfo, setSourceInfo] = useState<EvidenceSource | null>(null);
@@ -398,8 +400,11 @@ export default function CaseDetailPage() {
 
   const cancelProcessing = async () => {
     if (!job || !isActiveJob(job)) return;
-    const proceed = window.confirm("Cancel current evidence processing?");
-    if (!proceed) return;
+    setConfirmAction("cancel");
+  };
+
+  const doCancelProcessing = async () => {
+    if (!job) return;
     try {
       const updated = await api.cancelJob(job.id);
       setJob(updated);
@@ -696,16 +701,7 @@ export default function CaseDetailPage() {
                     className="secondary"
                     style={{ fontSize: "0.72rem", width: "100%", padding: "0.25rem" }}
                     disabled={hashingFiles}
-                    onClick={async () => {
-                      const proceed = window.confirm(
-                        "This will hash all files in the evidence package using SHA256, SHA1, and MD5. " +
-                        "It can take a while on large collections and will use worker resources. Continue?"
-                      );
-                      if (!proceed) return;
-                      setHashingFiles(true);
-                      try { await api.computeFileHashes(caseId, selectedSource); setHashInfo((h) => h ? { ...h, hash_status: "running" } : h); }
-                      finally { setHashingFiles(false); }
-                    }}
+                    onClick={() => setConfirmAction("hash")}
                   >
                     {hashingFiles ? "Starting…" : "Hash all evidence files"}
                   </button>
@@ -724,16 +720,7 @@ export default function CaseDetailPage() {
                     className="secondary"
                     style={{ fontSize: "0.72rem", width: "100%", padding: "0.25rem" }}
                     disabled={scanningYara}
-                    onClick={async () => {
-                      const proceed = window.confirm(
-                        "This runs YARA across evidence files using the signature-base default ruleset. " +
-                        "It can take time on large collections. Continue?"
-                      );
-                      if (!proceed) return;
-                      setScanningYara(true);
-                      try { await api.computeYaraScan(caseId, selectedSource); setHashInfo((h) => h ? { ...h, yara_status: "running" } : h); }
-                      finally { setScanningYara(false); }
-                    }}
+                    onClick={() => setConfirmAction("yara")}
                   >
                     {scanningYara ? "Starting…" : "Scan evidence with YARA"}
                   </button>
@@ -1049,6 +1036,47 @@ export default function CaseDetailPage() {
           </div>
         </div>
       )}
+
+            <ConfirmDialog
+              open={confirmAction !== null}
+              title={
+                confirmAction === "cancel"
+                  ? "Cancel processing"
+                  : confirmAction === "hash"
+                  ? "Hash all evidence files"
+                  : "Scan evidence with YARA"
+              }
+              message={
+                confirmAction === "cancel"
+                  ? "Cancel current evidence processing?"
+                  : confirmAction === "hash"
+                  ? "This will hash all files in the evidence package using SHA256, SHA1, and MD5. It can take a while on large collections and will use worker resources. Continue?"
+                  : "This runs YARA across evidence files using the signature-base default ruleset. It can take time on large collections. Continue?"
+              }
+              confirmLabel="Continue"
+              onCancel={() => setConfirmAction(null)}
+              onConfirm={() => {
+                const action = confirmAction;
+                setConfirmAction(null);
+                if (action === "cancel") {
+                  void doCancelProcessing();
+                } else if (action === "hash") {
+                  setHashingFiles(true);
+                  api
+                    .computeFileHashes(caseId, selectedSource)
+                    .then(() => setHashInfo((h) => (h ? { ...h, hash_status: "running" } : h)))
+                    .catch((e) => setError(String(e)))
+                    .finally(() => setHashingFiles(false));
+                } else if (action === "yara") {
+                  setScanningYara(true);
+                  api
+                    .computeYaraScan(caseId, selectedSource)
+                    .then(() => setHashInfo((h) => (h ? { ...h, yara_status: "running" } : h)))
+                    .catch((e) => setError(String(e)))
+                    .finally(() => setScanningYara(false));
+                }
+              }}
+            />
     </div>
   );
 }
