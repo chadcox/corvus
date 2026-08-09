@@ -23,6 +23,10 @@ import ConfirmDialog from "../components/ConfirmDialog";
 
 type Tab = "timeline" | "object" | "disk" | "mft" | "browser";
 type StatPivot = "events" | "objects" | "paths" | "sigma" | "mft" | "browser";
+type ConfirmAction =
+  | { kind: "cancel"; jobId: string }
+  | { kind: "hash"; sourceId: string }
+  | { kind: "yara"; sourceId: string };
 
 const BASE_TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "timeline", label: "Timeline", icon: "◷" },
@@ -118,6 +122,8 @@ export default function CaseDetailPage() {
   const [caseData, setCaseData] = useState<Case | null>(null);
   const [sources, setSources] = useState<EvidenceSource[]>([]);
   const [selectedSource, setSelectedSource] = useState<string>("");
+  const selectedSourceRef = useRef(selectedSource);
+  selectedSourceRef.current = selectedSource;
   const [tab, setTab] = useState<Tab>("timeline");
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -135,9 +141,9 @@ export default function CaseDetailPage() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [hashInfo, setHashInfo] = useState<EvidenceHashes | null>(null);
-  const [hashingFiles, setHashingFiles] = useState(false);
-  const [scanningYara, setScanningYara] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<null | "cancel" | "hash" | "yara">(null);
+  const [hashingSourceIds, setHashingSourceIds] = useState<Set<string>>(() => new Set());
+  const [yaraSourceIds, setYaraSourceIds] = useState<Set<string>>(() => new Set());
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [detections, setDetections] = useState<SigmaDetection[]>([]);
   const [sourceInfoOpen, setSourceInfoOpen] = useState(false);
   const [sourceInfo, setSourceInfo] = useState<EvidenceSource | null>(null);
@@ -400,13 +406,12 @@ export default function CaseDetailPage() {
 
   const cancelProcessing = async () => {
     if (!job || !isActiveJob(job)) return;
-    setConfirmAction("cancel");
+    setConfirmAction({ kind: "cancel", jobId: job.id });
   };
 
-  const doCancelProcessing = async () => {
-    if (!job) return;
+  const doCancelProcessing = async (jobId: string) => {
     try {
-      const updated = await api.cancelJob(job.id);
+      const updated = await api.cancelJob(jobId);
       setJob(updated);
       if (caseId) {
         load({ selectSourceId: updated.evidence_source_id });
@@ -700,10 +705,10 @@ export default function CaseDetailPage() {
                     type="button"
                     className="secondary"
                     style={{ fontSize: "0.72rem", width: "100%", padding: "0.25rem" }}
-                    disabled={hashingFiles}
-                    onClick={() => setConfirmAction("hash")}
+                    disabled={hashingSourceIds.has(selectedSource)}
+                    onClick={() => setConfirmAction({ kind: "hash", sourceId: selectedSource })}
                   >
-                    {hashingFiles ? "Starting…" : "Hash all evidence files"}
+                    {hashingSourceIds.has(selectedSource) ? "Starting…" : "Hash all evidence files"}
                   </button>
                 )}
               </div>
@@ -719,10 +724,10 @@ export default function CaseDetailPage() {
                     type="button"
                     className="secondary"
                     style={{ fontSize: "0.72rem", width: "100%", padding: "0.25rem" }}
-                    disabled={scanningYara}
-                    onClick={() => setConfirmAction("yara")}
+                    disabled={yaraSourceIds.has(selectedSource)}
+                    onClick={() => setConfirmAction({ kind: "yara", sourceId: selectedSource })}
                   >
-                    {scanningYara ? "Starting…" : "Scan evidence with YARA"}
+                    {yaraSourceIds.has(selectedSource) ? "Starting…" : "Scan evidence with YARA"}
                   </button>
                 )}
               </div>
@@ -1040,16 +1045,16 @@ export default function CaseDetailPage() {
             <ConfirmDialog
               open={confirmAction !== null}
               title={
-                confirmAction === "cancel"
+                confirmAction?.kind === "cancel"
                   ? "Cancel processing"
-                  : confirmAction === "hash"
+                  : confirmAction?.kind === "hash"
                   ? "Hash all evidence files"
                   : "Scan evidence with YARA"
               }
               message={
-                confirmAction === "cancel"
+                confirmAction?.kind === "cancel"
                   ? "Cancel current evidence processing?"
-                  : confirmAction === "hash"
+                  : confirmAction?.kind === "hash"
                   ? "This will hash all files in the evidence package using SHA256, SHA1, and MD5. It can take a while on large collections and will use worker resources. Continue?"
                   : "This runs YARA across evidence files using the signature-base default ruleset. It can take time on large collections. Continue?"
               }
@@ -1058,22 +1063,42 @@ export default function CaseDetailPage() {
               onConfirm={() => {
                 const action = confirmAction;
                 setConfirmAction(null);
-                if (action === "cancel") {
-                  void doCancelProcessing();
-                } else if (action === "hash") {
-                  setHashingFiles(true);
+                if (action?.kind === "cancel") {
+                  void doCancelProcessing(action.jobId);
+                } else if (action?.kind === "hash") {
+                  setHashingSourceIds((ids) => new Set(ids).add(action.sourceId));
                   api
-                    .computeFileHashes(caseId, selectedSource)
-                    .then(() => setHashInfo((h) => (h ? { ...h, hash_status: "running" } : h)))
+                    .computeFileHashes(caseId, action.sourceId)
+                    .then(() => {
+                      if (selectedSourceRef.current === action.sourceId) {
+                        setHashInfo((h) => (h ? { ...h, hash_status: "running" } : h));
+                      }
+                    })
                     .catch((e) => setError(String(e)))
-                    .finally(() => setHashingFiles(false));
-                } else if (action === "yara") {
-                  setScanningYara(true);
+                    .finally(() =>
+                      setHashingSourceIds((ids) => {
+                        const next = new Set(ids);
+                        next.delete(action.sourceId);
+                        return next;
+                      })
+                    );
+                } else if (action?.kind === "yara") {
+                  setYaraSourceIds((ids) => new Set(ids).add(action.sourceId));
                   api
-                    .computeYaraScan(caseId, selectedSource)
-                    .then(() => setHashInfo((h) => (h ? { ...h, yara_status: "running" } : h)))
+                    .computeYaraScan(caseId, action.sourceId)
+                    .then(() => {
+                      if (selectedSourceRef.current === action.sourceId) {
+                        setHashInfo((h) => (h ? { ...h, yara_status: "running" } : h));
+                      }
+                    })
                     .catch((e) => setError(String(e)))
-                    .finally(() => setScanningYara(false));
+                    .finally(() =>
+                      setYaraSourceIds((ids) => {
+                        const next = new Set(ids);
+                        next.delete(action.sourceId);
+                        return next;
+                      })
+                    );
                 }
               }}
             />

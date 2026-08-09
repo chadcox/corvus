@@ -26,7 +26,12 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewOffset, setPreviewOffset] = useState(0);
-  const [confirmDownload, setConfirmDownload] = useState(false);
+  const [confirmDownload, setConfirmDownload] = useState<{
+    caseId: string;
+    sourceId: string;
+    nodeId: string;
+    name: string;
+  } | null>(null);
 
   useEffect(() => {
     if (focusPath) {
@@ -244,7 +249,14 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
                 type="button"
                 className="secondary"
                 style={{ marginTop: "0.45rem", width: "100%", fontSize: "0.75rem", textAlign: "center", padding: "0.36rem 0.5rem" }}
-                onClick={() => setConfirmDownload(true)}
+                onClick={() =>
+                  setConfirmDownload({
+                    caseId,
+                    sourceId,
+                    nodeId: selected.id,
+                    name: selected.name,
+                  })
+                }
               >
                 Download file
               </button>
@@ -296,21 +308,26 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
       />
 
       <ConfirmDialog
-        open={confirmDownload}
+        open={confirmDownload !== null}
         title="Download file"
         message={
           <>
             Warning: This file may contain malware or other harmful content. Only download to a controlled forensic
-            analysis environment. Do you want to continue downloading <strong>"{selected?.name}"</strong>?
+            analysis environment. Do you want to continue downloading <strong>"{confirmDownload?.name}"</strong>?
           </>
         }
         confirmLabel="Download"
         danger
-        onCancel={() => setConfirmDownload(false)}
+        onCancel={() => setConfirmDownload(null)}
         onConfirm={() => {
-          setConfirmDownload(false);
-          if (selected) {
-            window.location.href = api.filesystemFileDownloadUrl(caseId, sourceId, selected.id);
+          const target = confirmDownload;
+          setConfirmDownload(null);
+          if (target) {
+            window.location.href = api.filesystemFileDownloadUrl(
+              target.caseId,
+              target.sourceId,
+              target.nodeId
+            );
           }
         }}
       />

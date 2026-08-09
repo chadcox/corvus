@@ -1,4 +1,5 @@
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
 
 type Props = {
   open: boolean;
@@ -21,36 +22,83 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const onCancelRef = useRef(onCancel);
+  const titleId = useId();
+  const messageId = useId();
 
-  // Focus the confirm button on open; close on Escape.
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
   useEffect(() => {
     if (!open) return;
-    confirmRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
+
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const appRoot = document.getElementById("root");
+    const rootWasInert = appRoot?.inert ?? false;
+    if (appRoot) appRoot.inert = true;
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      (danger ? cancelRef.current : confirmRef.current)?.focus();
+    });
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onCancelRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = dialogRef.current;
+      const first = cancelRef.current;
+      const last = confirmRef.current;
+      if (!dialog || !first || !last) return;
+
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onCancel]);
+
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", onKeyDown, true);
+      if (appRoot) appRoot.inert = rootWasInert;
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [danger, open]);
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div className="modal-backdrop" onClick={onCancel}>
       <div
+        ref={dialogRef}
         className="modal-card confirm-dialog"
         role="alertdialog"
         aria-modal="true"
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
+        aria-labelledby={titleId}
+        aria-describedby={messageId}
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="modal-head">
-          <h2>{title}</h2>
+          <h2 id={titleId}>{title}</h2>
         </div>
-        <div className="confirm-dialog-body">{message}</div>
+        <div id={messageId} className="confirm-dialog-body">
+          {message}
+        </div>
         <div className="confirm-dialog-actions">
-          <button type="button" className="secondary" onClick={onCancel}>
+          <button ref={cancelRef} type="button" className="secondary" onClick={onCancel}>
             {cancelLabel}
           </button>
           <button
@@ -63,6 +111,7 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

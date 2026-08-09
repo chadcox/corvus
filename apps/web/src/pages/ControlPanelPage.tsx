@@ -39,7 +39,9 @@ export default function ControlPanelPage({ me }: Props) {
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsTitle, setLogsTitle] = useState("");
   const [logsText, setLogsText] = useState("");
-  const [confirmOp, setConfirmOp] = useState<null | { kind: "bulk-delete" } | { kind: "reindex-all" }>(null);
+  const [confirmOp, setConfirmOp] = useState<
+    null | { kind: "bulk-delete"; caseIds: string[] } | { kind: "reindex-all" }
+  >(null);
 
   if (me.role !== "administrator") {
     return <div className="alert alert-error">Forbidden (403): administrator role required.</div>;
@@ -291,7 +293,7 @@ export default function ControlPanelPage({ me }: Props) {
 
       <div className="panel animate-in animate-in-delay-2" style={{ marginBottom: "1rem" }}>
         <h2>Container status</h2>
-        {containersError && <p className="panel-desc">Container status unavailable: {friendlyContainerError(containersError)}</p>}
+        {containersError && <p className="panel-desc">{friendlyContainerError(containersError)}</p>}
         {!containersError && containers.length === 0 && <p className="panel-desc">No project containers found.</p>}
         {containers.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "0.75rem" }}>
@@ -365,7 +367,7 @@ export default function ControlPanelPage({ me }: Props) {
         </div>
         <button
           disabled={runningOp !== null || bulkDeleteCaseIds.length === 0}
-          onClick={() => setConfirmOp({ kind: "bulk-delete" })}
+          onClick={() => setConfirmOp({ kind: "bulk-delete", caseIds: [...bulkDeleteCaseIds] })}
         >
           {runningOp === "bulk-delete-cases" ? "Deleting…" : `Delete Selected Cases (${bulkDeleteCaseIds.length})`}
         </button>
@@ -449,7 +451,7 @@ export default function ControlPanelPage({ me }: Props) {
         title={confirmOp?.kind === "bulk-delete" ? "Delete selected cases" : "Reindex all sources"}
         message={
           confirmOp?.kind === "bulk-delete"
-            ? `Delete ${bulkDeleteCaseIds.length} selected case(s)? This cannot be undone.`
+            ? `Delete ${confirmOp.caseIds.length} selected case(s)? This cannot be undone.`
             : "Reindex all sources? This can take time."
         }
         confirmLabel={confirmOp?.kind === "bulk-delete" ? "Delete" : "Reindex"}
@@ -460,7 +462,7 @@ export default function ControlPanelPage({ me }: Props) {
           setConfirmOp(null);
           if (op?.kind === "bulk-delete") {
             void doOp("bulk-delete-cases", async () => {
-              const result = await api.bulkDeleteCases(bulkDeleteCaseIds);
+              const result = await api.bulkDeleteCases(op.caseIds);
               setBulkDeleteCaseIds([]);
               await refreshCases();
               return result;
