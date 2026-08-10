@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, Case, EvidenceSource, SystemStatus } from "../api/client";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 function formatBytes(bytes: number | null): string {
   if (bytes == null || Number.isNaN(bytes)) return "N/A";
@@ -28,6 +29,7 @@ export default function CasesPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null);
   const [caseEvidence, setCaseEvidence] = useState<Record<string, EvidenceSource[]>>({});
 
   const summarizePlatforms = (sources: EvidenceSource[]): string[] => {
@@ -102,10 +104,7 @@ export default function CasesPage() {
     }
   };
 
-  const onDelete = async (caseId: string, caseName: string) => {
-    if (!window.confirm(`Delete case "${caseName}" and all evidence? This cannot be undone.`)) {
-      return;
-    }
+  const onDelete = async (caseId: string) => {
     setDeleting(caseId);
     setError(null);
     try {
@@ -186,7 +185,7 @@ export default function CasesPage() {
                     type="button"
                     className="ghost"
                     disabled={deleting === c.id}
-                    onClick={() => onDelete(c.id, c.name)}
+                    onClick={() => setConfirmDelete({ id: c.id, name: c.name })}
                   >
                     {deleting === c.id ? "…" : "Delete"}
                   </button>
@@ -235,6 +234,24 @@ export default function CasesPage() {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Delete case"
+        message={
+          <>
+            Delete case <strong>"{confirmDelete?.name}"</strong> and all evidence? This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete"
+        danger
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          const target = confirmDelete;
+          setConfirmDelete(null);
+          if (target) void onDelete(target.id);
+        }}
+      />
     </div>
   );
 }

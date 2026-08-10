@@ -45,8 +45,16 @@ Thumbs.db
 apps/worker/*log2timeline-*.log.gz
 apps/worker/Worker_00_log2timeline-*.log.gz
 
-# Local planning artifacts
+# Local planning and agent artifacts
 docs/superpowers/plans/
+.hermes/
+
+# Generated local QA output
+dogfood-output/
+
+# Local backups and runtime data
+backups/
+dump.rdb
 
 # EZ Tools (downloaded at build/runtime)
 tools/eztools/

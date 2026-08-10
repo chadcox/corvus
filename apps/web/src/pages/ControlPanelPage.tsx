@@ -2,10 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { AdminJob, AdminOverview, api, AuthUser, Case, DetectionRulesStatus, EvidenceSource, ProjectContainer, SystemStatus, YaraRulesStatus } from "../api/client";
 import AdminUsersPage from "./AdminUsersPage";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 type Props = {
   me: AuthUser;
 };
+
+function friendlyContainerError(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("docker") || lower.includes("daemon") || lower.includes("socket"))
+    return "Container status requires the Docker daemon, which is not available in this deployment. Container management features are unavailable.";
+  if (lower.includes("internal server error") || lower.includes("500"))
+    return "Container status is unavailable right now. This usually means the Docker daemon is not running or not reachable from the API.";
+  return raw;
+}
 
 export default function ControlPanelPage({ me }: Props) {
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -29,6 +39,9 @@ export default function ControlPanelPage({ me }: Props) {
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsTitle, setLogsTitle] = useState("");
   const [logsText, setLogsText] = useState("");
+  const [confirmOp, setConfirmOp] = useState<
+    null | { kind: "bulk-delete"; caseIds: string[] } | { kind: "reindex-all" }
+  >(null);
 
   if (me.role !== "administrator") {
     return <div className="alert alert-error">Forbidden (403): administrator role required.</div>;
@@ -280,7 +293,7 @@ export default function ControlPanelPage({ me }: Props) {
 
       <div className="panel animate-in animate-in-delay-2" style={{ marginBottom: "1rem" }}>
         <h2>Container status</h2>
-        {containersError && <p className="panel-desc">Container status unavailable: {containersError}</p>}
+        {containersError && <p className="panel-desc">{friendlyContainerError(containersError)}</p>}
         {!containersError && containers.length === 0 && <p className="panel-desc">No project containers found.</p>}
         {containers.length > 0 && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "0.75rem" }}>
@@ -354,15 +367,7 @@ export default function ControlPanelPage({ me }: Props) {
         </div>
         <button
           disabled={runningOp !== null || bulkDeleteCaseIds.length === 0}
-          onClick={() => {
-            if (!window.confirm(`Delete ${bulkDeleteCaseIds.length} selected case(s)? This cannot be undone.`)) return;
-            void doOp("bulk-delete-cases", async () => {
-              const result = await api.bulkDeleteCases(bulkDeleteCaseIds);
-              setBulkDeleteCaseIds([]);
-              await refreshCases();
-              return result;
-            });
-          }}
+          onClick={() => setConfirmOp({ kind: "bulk-delete", caseIds: [...bulkDeleteCaseIds] })}
         >
           {runningOp === "bulk-delete-cases" ? "Deleting…" : `Delete Selected Cases (${bulkDeleteCaseIds.length})`}
         </button>
@@ -405,10 +410,7 @@ export default function ControlPanelPage({ me }: Props) {
             </button>
             <button
               disabled={runningOp !== null}
-              onClick={() => {
-                if (!window.confirm("Reindex all sources? This can take time.")) return;
-                void doOp("reindex-all", () => api.reindexSearch());
-              }}
+              onClick={() => setConfirmOp({ kind: "reindex-all" })}
             >
               {runningOp === "reindex-all" ? "Reindexing…" : "Full Reindex"}
             </button>
@@ -443,6 +445,33 @@ export default function ControlPanelPage({ me }: Props) {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmOp !== null}
+        title={confirmOp?.kind === "bulk-delete" ? "Delete selected cases" : "Reindex all sources"}
+        message={
+          confirmOp?.kind === "bulk-delete"
+            ? `Delete ${confirmOp.caseIds.length} selected case(s)? This cannot be undone.`
+            : "Reindex all sources? This can take time."
+        }
+        confirmLabel={confirmOp?.kind === "bulk-delete" ? "Delete" : "Reindex"}
+        danger={confirmOp?.kind === "bulk-delete"}
+        onCancel={() => setConfirmOp(null)}
+        onConfirm={() => {
+          const op = confirmOp;
+          setConfirmOp(null);
+          if (op?.kind === "bulk-delete") {
+            void doOp("bulk-delete-cases", async () => {
+              const result = await api.bulkDeleteCases(op.caseIds);
+              setBulkDeleteCaseIds([]);
+              await refreshCases();
+              return result;
+            });
+          } else if (op?.kind === "reindex-all") {
+            void doOp("reindex-all", () => api.reindexSearch());
+          }
+        }}
+      />
     </div>
   );
 }

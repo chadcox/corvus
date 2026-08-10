@@ -10,6 +10,7 @@ type Props = {
 export default function LoginPage({ user, onLogin }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,14 +37,39 @@ export default function LoginPage({ user, onLogin }: Props) {
         <h1 className="page-title">Sign in</h1>
         <p className="panel-desc">Use your local Corvus username and password.</p>
         <form onSubmit={onSubmit} className="create-case-form">
-          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" required />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            required
-          />
+          <div className="field">
+            <label className="field-label" htmlFor="username">Username</label>
+            <input
+              id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username"
+              autoComplete="username"
+              required
+            />
+          </div>
+          <div className="field">
+            <label className="field-label" htmlFor="password">Password</label>
+            <div className="password-field">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                autoComplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                onClick={() => setShowPassword((s) => !s)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "🙈" : "👁"}
+              </button>
+            </div>
+          </div>
           <button type="submit" disabled={loading || !username.trim() || !password}>
             {loading ? "Signing in…" : "Sign in"}
           </button>
