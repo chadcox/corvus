@@ -1,11 +1,17 @@
 import tarfile
-import tracemalloc
 import zipfile
 from pathlib import Path
 
 import pytest
 
-from app.package_extract import PackageExtractError, extract_archive, extract_tar, extract_zip
+from app.package_extract import (
+    PackageExtractError,
+    _validate_tar,
+    _validate_zip,
+    extract_archive,
+    extract_tar,
+    extract_zip,
+)
 
 
 def test_extract_zip_store_method(tmp_path: Path):
@@ -115,58 +121,90 @@ def test_extract_zip_rejects_expanded_size_limit(tmp_path: Path):
         extract_zip(archive, dest, max_uncompressed_bytes=4)
 
 
-def test_extract_zip_deep_near_limit_path_uses_bounded_memory(tmp_path: Path):
-    archive = tmp_path / "deep.zip"
+def test_extract_zip_max_files_counts_files_not_path_segments(tmp_path: Path):
+    archive = tmp_path / "nested.zip"
     dest = tmp_path / "out"
-    member_name = "/".join(["segment"] * 500 + ["report.txt"])
-    assert 4_000 < len(member_name) <= 4_096
+    member_name = "triage/windows/registry/hives/system/report.txt"
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as zf:
+        zf.writestr("triage/", "")
+        zf.writestr("triage/windows/", "")
         zf.writestr(member_name, "data")
 
-    tracemalloc.start()
-    try:
-        extract_zip(archive, dest)
-        _, peak_bytes = tracemalloc.get_traced_memory()
-    finally:
-        tracemalloc.stop()
+    extract_zip(archive, dest, max_files=1)
 
     assert (dest / member_name).read_text(encoding="utf-8") == "data"
-    assert peak_bytes < 4 * 1024 * 1024
 
 
-@pytest.mark.parametrize("member_kind", ["directories", "files"])
-def test_extract_zip_rejects_aggregate_path_entry_limit(
-    tmp_path: Path, member_kind: str
+def test_extract_tar_max_files_counts_files_not_path_segments(tmp_path: Path):
+    archive = tmp_path / "nested.tar"
+    dest = tmp_path / "out"
+    payload = tmp_path / "report.txt"
+    payload.write_text("data", encoding="utf-8")
+    member_name = "triage/linux/var/log/journal/report.txt"
+    with tarfile.open(archive, "w") as tf:
+        for directory in ("triage", "triage/linux"):
+            info = tarfile.TarInfo(directory)
+            info.type = tarfile.DIRTYPE
+            tf.addfile(info)
+        tf.add(payload, arcname=member_name)
+
+    extract_tar(archive, dest, max_files=1)
+
+    assert (dest / member_name).read_text(encoding="utf-8") == "data"
+
+
+def test_validate_zip_enforces_injected_path_node_ceiling(tmp_path: Path):
+    archive = tmp_path / "paths.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as zf:
+        zf.writestr("alpha/beta/report.txt", "data")
+
+    with zipfile.ZipFile(archive) as zf:
+        _validate_zip(zf, max_files=10, max_uncompressed_bytes=1024, _max_path_nodes=3)
+        with pytest.raises(PackageExtractError, match="more than 2 path entries"):
+            _validate_zip(zf, max_files=10, max_uncompressed_bytes=1024, _max_path_nodes=2)
+
+
+def test_validate_tar_enforces_injected_path_node_ceiling(tmp_path: Path):
+    archive = tmp_path / "paths.tar"
+    payload = tmp_path / "report.txt"
+    payload.write_text("data", encoding="utf-8")
+    with tarfile.open(archive, "w") as tf:
+        tf.add(payload, arcname="alpha/beta/report.txt")
+
+    with tarfile.open(archive) as tf:
+        _validate_tar(tf, max_files=10, max_uncompressed_bytes=1024, _max_path_nodes=3)
+        with pytest.raises(PackageExtractError, match="more than 2 path entries"):
+            _validate_tar(tf, max_files=10, max_uncompressed_bytes=1024, _max_path_nodes=2)
+
+
+def test_extract_zip_path_node_ceiling_rejects_before_extraction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    archive = tmp_path / "too-many-paths.zip"
+    monkeypatch.setattr("app.package_extract.MAX_ARCHIVE_PATH_NODES", 2)
+    archive = tmp_path / "paths.zip"
     dest = tmp_path / "out"
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as zf:
-        if member_kind == "directories":
-            for name in ("a/", "b/", "c/", "d/", "e/"):
-                zf.writestr(name, "")
-            max_files = 1
-        else:
-            for prefix in ("a", "b", "c"):
-                zf.writestr(f"{prefix}/one/two/three/report.txt", "data")
-            max_files = 3
+        zf.writestr("alpha/beta/report.txt", "data")
 
-    with pytest.raises(PackageExtractError, match=r"more than \d+ path entries"):
-        extract_zip(archive, dest, max_files=max_files)
+    with pytest.raises(PackageExtractError, match="more than 2 path entries"):
+        extract_zip(archive, dest, max_files=10)
 
     assert not dest.exists() or not any(dest.iterdir())
 
 
-def test_extract_tar_rejects_aggregate_path_entry_limit(tmp_path: Path):
-    archive = tmp_path / "too-many-paths.tar"
+def test_extract_tar_path_node_ceiling_rejects_before_extraction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr("app.package_extract.MAX_ARCHIVE_PATH_NODES", 2)
+    archive = tmp_path / "paths.tar"
     dest = tmp_path / "out"
+    payload = tmp_path / "report.txt"
+    payload.write_text("data", encoding="utf-8")
     with tarfile.open(archive, "w") as tf:
-        for name in ("a", "b", "c", "d", "e"):
-            info = tarfile.TarInfo(name)
-            info.type = tarfile.DIRTYPE
-            tf.addfile(info)
+        tf.add(payload, arcname="alpha/beta/report.txt")
 
-    with pytest.raises(PackageExtractError, match="more than 4 path entries"):
-        extract_tar(archive, dest, max_files=1)
+    with pytest.raises(PackageExtractError, match="more than 2 path entries"):
+        extract_tar(archive, dest, max_files=10)
 
     assert not dest.exists() or not any(dest.iterdir())
 

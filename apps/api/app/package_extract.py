@@ -54,7 +54,11 @@ class _ArchivePathNode:
         self.is_file = False
 
 
-_PATH_NODES_PER_FILE = 4
+# Structural ceiling on distinct path components (directories plus files) in one
+# archive. This is deliberately independent of the file-count limit: a package can
+# legitimately be deeply nested while holding few files, and a hostile package can
+# describe a huge directory tree while declaring few files.
+MAX_ARCHIVE_PATH_NODES = 1_000_000
 
 
 def _record_member_path(
@@ -107,12 +111,13 @@ def _validate_zip(
     *,
     max_files: int,
     max_uncompressed_bytes: int,
+    _max_path_nodes: int | None = None,
 ) -> None:
     file_count = 0
     total_size = 0
     path_root = _ArchivePathNode()
     path_node_count = 0
-    max_path_nodes = max_files * _PATH_NODES_PER_FILE
+    max_path_nodes = MAX_ARCHIVE_PATH_NODES if _max_path_nodes is None else _max_path_nodes
     for info in zf.infolist():
         _validate_member_name(info.filename)
         if info.flag_bits & 0x1:
@@ -205,19 +210,19 @@ def _validate_tar(
     *,
     max_files: int,
     max_uncompressed_bytes: int,
+    _max_path_nodes: int | None = None,
 ) -> None:
     file_count = 0
     total_size = 0
     path_root = _ArchivePathNode()
     path_node_count = 0
-    max_path_nodes = max_files * _PATH_NODES_PER_FILE
+    max_path_nodes = MAX_ARCHIVE_PATH_NODES if _max_path_nodes is None else _max_path_nodes
     for info in tf.getmembers():
         _validate_member_name(info.name)
         if info.issym() or info.islnk():
             continue
-        if not info.isfile():
-            if not info.isdir():
-                raise PackageExtractError(f"Archive contains an unsupported entry: {info.name}")
+        if not info.isfile() and not info.isdir():
+            raise PackageExtractError(f"Archive contains an unsupported entry: {info.name}")
         path_node_count = _record_member_path(
             info.name,
             is_directory=info.isdir(),
