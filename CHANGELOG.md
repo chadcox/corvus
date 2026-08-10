@@ -12,6 +12,8 @@ All notable changes to this project are documented here. Format loosely follows
 - Volatility 3 (VSL-1.0) entry in third-party notices.
 
 ### Changed
+- API archive extraction now rejects file/directory path conflicts and
+  excessively large path structures before extracting uploads.
 - Hardened default `docker-compose`: removed the host Docker socket mount from
   the default API service, bound OpenSearch to localhost, and defaulted the
   optional Volatility 3 install to off.

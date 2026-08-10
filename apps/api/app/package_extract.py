@@ -45,6 +45,63 @@ def _validate_member_name(name: str) -> None:
         raise PackageExtractError(f"Archive path is too long: {name[:120]}")
 
 
+class _ArchivePathNode:
+    __slots__ = ("children", "is_directory", "is_file")
+
+    def __init__(self) -> None:
+        self.children: dict[str, _ArchivePathNode] = {}
+        self.is_directory = False
+        self.is_file = False
+
+
+_PATH_NODES_PER_FILE = 4
+
+
+def _record_member_path(
+    name: str,
+    *,
+    is_directory: bool,
+    root: _ArchivePathNode,
+    node_count: int,
+    max_nodes: int,
+) -> int:
+    """Reject members that require the same path to be both a file and directory."""
+    normalized = _normalize_member_name(name)
+    if normalized in ("", "."):
+        return node_count
+
+    node = root
+    parts = PurePosixPath(normalized).parts
+    for index, part in enumerate(parts):
+        if node.is_file:
+            conflicting_file = PurePosixPath(*parts[:index])
+            raise PackageExtractError(
+                f"Archive path conflicts with file entry: {conflicting_file}"
+            )
+        child = node.children.get(part)
+        if child is None:
+            node_count += 1
+            if node_count > max_nodes:
+                raise PackageExtractError(
+                    f"Archive contains more than {max_nodes:,} path entries"
+                )
+            child = _ArchivePathNode()
+            node.children[part] = child
+        node = child
+
+    if is_directory:
+        if node.is_file:
+            raise PackageExtractError(f"Archive path conflicts with file entry: {normalized}")
+        node.is_directory = True
+    else:
+        if node.is_directory or node.children:
+            raise PackageExtractError(
+                f"Archive file conflicts with directory entry: {normalized}"
+            )
+        node.is_file = True
+    return node_count
+
+
 def _validate_zip(
     zf: zipfile.ZipFile,
     *,
@@ -53,6 +110,9 @@ def _validate_zip(
 ) -> None:
     file_count = 0
     total_size = 0
+    path_root = _ArchivePathNode()
+    path_node_count = 0
+    max_path_nodes = max_files * _PATH_NODES_PER_FILE
     for info in zf.infolist():
         _validate_member_name(info.filename)
         if info.flag_bits & 0x1:
@@ -62,6 +122,13 @@ def _validate_zip(
             )
         if _member_is_symlink(info):
             raise PackageExtractError(f"Archive contains a symlink entry: {info.filename}")
+        path_node_count = _record_member_path(
+            info.filename,
+            is_directory=info.is_dir(),
+            root=path_root,
+            node_count=path_node_count,
+            max_nodes=max_path_nodes,
+        )
         if info.is_dir():
             continue
         file_count += 1
@@ -141,14 +208,25 @@ def _validate_tar(
 ) -> None:
     file_count = 0
     total_size = 0
+    path_root = _ArchivePathNode()
+    path_node_count = 0
+    max_path_nodes = max_files * _PATH_NODES_PER_FILE
     for info in tf.getmembers():
         _validate_member_name(info.name)
-        if info.isdir():
-            continue
         if info.issym() or info.islnk():
             continue
         if not info.isfile():
-            raise PackageExtractError(f"Archive contains an unsupported entry: {info.name}")
+            if not info.isdir():
+                raise PackageExtractError(f"Archive contains an unsupported entry: {info.name}")
+        path_node_count = _record_member_path(
+            info.name,
+            is_directory=info.isdir(),
+            root=path_root,
+            node_count=path_node_count,
+            max_nodes=max_path_nodes,
+        )
+        if info.isdir():
+            continue
         file_count += 1
         if file_count > max_files:
             raise PackageExtractError(f"Archive contains more than {max_files:,} files")
