@@ -17,6 +17,11 @@ All notable changes to this project are documented here. Format loosely follows
   optional Volatility 3 install to off.
 - `.env.example` no longer ships a working default admin password.
 
+### Fixed
+- Search terms are now matched literally: `%` and `_` in timeline, timeline
+  density histogram, global search, filesystem path, and entity queries are
+  escaped instead of being treated as SQL LIKE wildcards.
+
 ## [0.1.0]
 
 - Initial public release: offline forensic triage platform (API, worker, web)

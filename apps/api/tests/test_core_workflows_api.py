@@ -613,7 +613,11 @@ def test_stats_and_histogram_routes():
     assert stats.sigma_detection_count == 3
     assert stats.event_types == ["4624", "4688"]
 
-    hist = stats_router.get_timeline_histogram(case_id=case_id, source_id=source_id, db=db)
+    # Filters are passed explicitly: calling the route directly bypasses FastAPI,
+    # so unset params would otherwise stay as truthy Query() defaults.
+    hist = stats_router.get_timeline_histogram(
+        case_id=case_id, source_id=source_id, q=None, db=db
+    )
     assert hist["granularity"] == "day"
     assert hist["total"] == 8
     assert len(hist["buckets"]) == 2

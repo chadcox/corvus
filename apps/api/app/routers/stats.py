@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Entity, EvidenceSource, FilesystemNode, SigmaDetection, TimelineEvent
+from app.search_filters import LIKE_ESCAPE_CHAR, like_contains
 from corvus_core.schemas import SourceStats
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/stats", tags=["stats"])
@@ -131,13 +132,22 @@ def get_timeline_histogram(
         clauses.append("AND event_type = :event_type")
         params["event_type"] = event_type
     if q:
+        # Must match the event-list semantics in timeline.py: analyst terms are
+        # literal, so wildcards are escaped and every pattern carries ESCAPE.
+        # The E'' form spells the escape character the same way regardless of
+        # the server's standard_conforming_strings setting.
+        esc = f"ESCAPE E'{LIKE_ESCAPE_CHAR * 2}'"
         if browser_only:
             clauses.append(
-                "AND (summary ILIKE :q OR data->>'url' ILIKE :q OR data->>'title' ILIKE :q OR data->>'message' ILIKE :q OR data->>'host' ILIKE :q)"
+                f"AND (summary ILIKE :q {esc}"
+                f" OR data->>'url' ILIKE :q {esc}"
+                f" OR data->>'title' ILIKE :q {esc}"
+                f" OR data->>'message' ILIKE :q {esc}"
+                f" OR data->>'host' ILIKE :q {esc})"
             )
         else:
-            clauses.append("AND summary ILIKE :q")
-        params["q"] = f"%{q}%"
+            clauses.append(f"AND summary ILIKE :q {esc}")
+        params["q"] = like_contains(q)
     if artifact_type:
         clauses.append("AND artifact_type = :artifact_type")
         params["artifact_type"] = artifact_type

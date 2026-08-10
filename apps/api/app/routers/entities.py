@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Entity, EvidenceSource, TimelineEvent
+from app.search_filters import LIKE_ESCAPE_CHAR, like_contains
 from corvus_core.schemas import EntityRead, TimelineEventRead
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/entities", tags=["entities"])
@@ -37,7 +38,9 @@ def list_entities(
     if entity_type:
         query = query.filter(Entity.entity_type == entity_type)
     if q:
-        query = query.filter(Entity.display_name.ilike(f"%{q}%"))
+        query = query.filter(
+            Entity.display_name.ilike(like_contains(q), escape=LIKE_ESCAPE_CHAR)
+        )
     if ids:
         query = query.filter(Entity.id.in_(ids))
 
