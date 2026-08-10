@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 from datetime import datetime
 from uuid import UUID
 
@@ -260,7 +261,8 @@ def export_timeline_csv(
             )
             yield buffer.getvalue()
 
-    filename = f"timeline-{source.hostname}.csv".replace(" ", "_")
+    safe_host = re.sub(r"[^A-Za-z0-9._-]", "_", source.hostname or "host")
+    filename = f"timeline-{safe_host}.csv"
     return StreamingResponse(
         generate(),
         media_type="text/csv",
