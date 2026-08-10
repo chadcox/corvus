@@ -204,6 +204,40 @@ def test_ingest_runs_plaso_on_image_file_with_partitions(tmp_path: Path, monkeyp
     assert captured["source_args"] == ["--partitions", "all"]
 
 
+def test_ingest_reports_filesystem_node_truncation_below_limit(tmp_path: Path, monkeypatch):
+    write_ewf(tmp_path / "disk.E01")
+
+    def fake_filesystem_nodes(_events, _eid, *, truncated, **_kwargs):
+        truncated[:] = [True]
+        return []
+
+    monkeypatch.setattr(disk_image_module, "plaso_available", lambda: True)
+    monkeypatch.setattr(settings, "plaso_enabled", True)
+    monkeypatch.setattr(
+        disk_image_module,
+        "run_plaso",
+        lambda _source, output_dir, **_kwargs: (output_dir / "plaso.jsonl", None),
+    )
+    monkeypatch.setattr(disk_image_module, "parse_tool_outputs", lambda *_a, **_k: [{}])
+    monkeypatch.setattr(
+        disk_image_module, "filesystem_nodes_from_events", fake_filesystem_nodes
+    )
+
+    result = DiskImageAdapter().ingest(
+        tmp_path,
+        uuid4(),
+        platform="disk",
+        collector="import",
+        manifest=None,
+    )
+
+    assert any(
+        f"0 filesystem nodes from image (truncated at {disk_image_module.MAX_DISK_IMAGE_FS_NODES})"
+        in note
+        for note in result["ingest_notes"]
+    )
+
+
 def test_run_plaso_passes_source_args_to_log2timeline(tmp_path: Path, monkeypatch):
     commands: list[list[str]] = []
 
@@ -318,6 +352,54 @@ def test_filesystem_nodes_from_events_marks_unallocated_as_deleted():
     assert deleted["/Users/jsmith/mal.exe"] is True
     # Synthesised parents are not claimed to be deleted.
     assert deleted["/Users"] is False
+
+
+def test_filesystem_nodes_from_events_limit_keeps_complete_paths():
+    truncated = [False]
+    nodes = disk_image_module.filesystem_nodes_from_events(
+        [
+            _fs_stat("\\too\\deep\\for\\the\\limit.txt"),
+            _fs_stat("\\fits\\file.txt"),
+        ],
+        "src-1",
+        limit=3,
+        truncated=truncated,
+    )
+
+    assert {node["full_path"] for node in nodes} == {"/fits", "/fits/file.txt"}
+    assert len(nodes) <= 3
+    assert truncated == [True]
+    assert all(
+        node["parent_path"] is None
+        or node["parent_path"] in {candidate["full_path"] for candidate in nodes}
+        for node in nodes
+    )
+
+
+def test_filesystem_nodes_from_events_exact_fit_is_not_truncated():
+    truncated = [False]
+    nodes = disk_image_module.filesystem_nodes_from_events(
+        [_fs_stat("\\fits\\file.txt")],
+        "src-1",
+        limit=2,
+        truncated=truncated,
+    )
+
+    assert {node["full_path"] for node in nodes} == {"/fits", "/fits/file.txt"}
+    assert truncated == [False]
+
+
+def test_filesystem_nodes_from_events_zero_limit_signals_truncation():
+    truncated = [False]
+    nodes = disk_image_module.filesystem_nodes_from_events(
+        [_fs_stat("\\file.txt")],
+        "src-1",
+        limit=0,
+        truncated=truncated,
+    )
+
+    assert nodes == []
+    assert truncated == [True]
 
 
 def test_filesystem_nodes_from_events_keeps_ads_paths_intact():

@@ -148,6 +148,7 @@ def filesystem_nodes_from_events(
     evidence_source_id: str,
     *,
     limit: int = MAX_DISK_IMAGE_FS_NODES,
+    truncated: list[bool] | None = None,
 ) -> list[dict[str, Any]]:
     """Derive filesystem nodes from Plaso ``fs:stat`` events.
 
@@ -212,8 +213,22 @@ def filesystem_nodes_from_events(
         if existing is not None and not existing["is_directory"]:
             # Real entries win over synthesised parents; otherwise keep the first.
             continue
-        if full_path not in nodes and len(nodes) >= limit:
-            break
+        if full_path not in nodes:
+            if len(nodes) >= limit:
+                if truncated is not None:
+                    truncated[:] = [True]
+                break
+            missing_paths = [full_path]
+            parent = parent_of(full_path)
+            while parent and parent not in nodes:
+                missing_paths.append(parent)
+                parent = parent_of(parent)
+            # Add a path atomically with its missing ancestors. A partial chain
+            # would either exceed the limit or leave the new node orphaned.
+            if len(nodes) + len(missing_paths) > limit:
+                if truncated is not None:
+                    truncated[:] = [True]
+                continue
         nodes[full_path] = node
         add_parents(full_path)
 
@@ -275,11 +290,14 @@ class DiskImageAdapter:
                     result["ingest_notes"].append(
                         f"Disk image: {len(events)} timeline events from Plaso"
                     )
-                    image_nodes = filesystem_nodes_from_events(events, eid)
-                    if image_nodes:
+                    nodes_truncated = [False]
+                    image_nodes = filesystem_nodes_from_events(
+                        events, eid, truncated=nodes_truncated
+                    )
+                    if image_nodes or nodes_truncated[0]:
                         result["filesystem_nodes"].extend(image_nodes)
                         note = f"Disk image: {len(image_nodes)} filesystem nodes from image"
-                        if len(image_nodes) >= MAX_DISK_IMAGE_FS_NODES:
+                        if nodes_truncated[0]:
                             note += f" (truncated at {MAX_DISK_IMAGE_FS_NODES})"
                         result["ingest_notes"].append(note)
                 elif err:
