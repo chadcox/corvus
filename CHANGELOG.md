@@ -12,6 +12,11 @@ All notable changes to this project are documented here. Format loosely follows
 - Volatility 3 (VSL-1.0) entry in third-party notices.
 
 ### Changed
+- API archive extraction now rejects uploads whose members claim the same path as
+  both a file and a directory, and enforces a fixed ceiling on the number of
+  distinct path components an archive may declare. That structural ceiling is
+  separate from `EXTRACTED_MAX_FILES`, which still limits file count only. Both
+  checks run before any member is written to disk.
 - Hardened default `docker-compose`: removed the host Docker socket mount from
   the default API service, bound OpenSearch to localhost, and defaulted the
   optional Volatility 3 install to off.
