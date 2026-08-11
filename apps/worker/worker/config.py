@@ -43,6 +43,12 @@ class WorkerSettings(BaseSettings):
     hindsight_max_profiles: int = 8
     hindsight_timeout_seconds: int = 900
     delete_evidence_after_ingest: bool = False
+    # Boot reconciliation of running ingest jobs left behind by a worker restart.
+    worker_reconcile_startup_delay_seconds: float = 15.0
+    worker_reconcile_inspect_timeout_seconds: float = 5.0
+    # skip = leave running jobs untouched when no worker answers the liveness
+    # probe; fail = treat every running job as orphaned (pre-liveness behaviour).
+    worker_reconcile_on_inspect_failure: str = "skip"
     plaso_enabled: bool = True
     plaso_log2timeline_bin: str = "log2timeline"
     plaso_psort_bin: str = "psort"

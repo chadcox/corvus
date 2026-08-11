@@ -34,6 +34,19 @@ All notable changes to this project are documented here. Format loosely follows
 - `.env.example` no longer ships a working default admin password.
 
 ### Fixed
+- Worker boot reconciliation no longer marks every running ingest job as failed.
+  It now probes Celery for the ingest task ids workers currently hold (a job id
+  is dispatched as its task id) and fails only the running jobs that no live
+  worker claims, so a restart or scale-up cannot report another worker's
+  in-flight ingest as failed. Reconciled jobs carry `error_code=interrupted` and
+  `error_stage=worker_restart`; an evidence source is failed only when none of
+  its running jobs survive. The check runs after a bounded startup grace window
+  (`WORKER_RECONCILE_STARTUP_DELAY_SECONDS`, default 15s), skips the probe
+  entirely when no job is running, and when no worker answers the probe follows
+  `WORKER_RECONCILE_ON_INSPECT_FAILURE` (`skip` by default, `fail` to restore
+  the previous mark-everything behaviour). Single-worker crash recovery is
+  unchanged: the rebooted worker holds no ingest tasks, so its stale jobs are
+  still failed.
 - Search terms are now matched literally: `%` and `_` in timeline, timeline
   density histogram, global search, filesystem path, and entity queries are
   escaped instead of being treated as SQL LIKE wildcards.

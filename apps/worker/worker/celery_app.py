@@ -4,7 +4,7 @@ from celery import Celery
 from celery.signals import worker_ready
 
 from worker.config import settings
-from worker.tasks.recovery import reconcile_orphaned_ingest_jobs
+from worker.tasks.recovery import start_startup_reconciliation
 
 celery_app = Celery("corvus", broker=settings.redis_url, backend=settings.redis_url)
 
@@ -34,4 +34,6 @@ celery_app.conf.update(
 
 @worker_ready.connect
 def _reconcile_orphaned_jobs_on_start(**kwargs) -> None:
-    reconcile_orphaned_ingest_jobs()
+    # Deferred to a background thread: the grace window lets this worker (and
+    # any peer still booting) answer the ownership probe before jobs are judged.
+    start_startup_reconciliation()

@@ -173,7 +173,7 @@ Timeline/filesystem/entity rows carry raw `evidence_source_id` FK columns withou
 
 **Bulk write** (`worker/tasks/ingest.py`): timeline via Postgres `COPY` (10k batches) with parameterized-INSERT fallback; `SET LOCAL synchronous_commit TO OFF`; cancellation honored by polling job row between stages (no Celery revoke); on any failure, `_clear_source_data()` deletes partially committed rows + OpenSearch docs.
 
-**Other tasks**: `hash_evidence_files` (thread-pooled sha256/sha1/md5), `refresh_{sigma,chainsaw,yara}_rules` (shell to fetch scripts, status JSON to Redis keys `corvus:{engine}:rules:status`), `recovery.reconcile_orphaned_ingest_jobs` (marks stale running jobs failed on every worker boot via `worker_ready` signal).
+**Other tasks**: `hash_evidence_files` (thread-pooled sha256/sha1/md5), `refresh_{sigma,chainsaw,yara}_rules` (shell to fetch scripts, status JSON to Redis keys `corvus:{engine}:rules:status`), `recovery.reconcile_orphaned_ingest_jobs` (on `worker_ready`, after a bounded grace window in a daemon thread: probes Celery `active`/`reserved`/`scheduled` for ingest task ids — job id == dispatched task id — and fails only the running jobs no live worker claims, with `error_code='interrupted'` / `error_stage='worker_restart'`; when no worker answers the probe it follows `WORKER_RECONCILE_ON_INSPECT_FAILURE`).
 
 **EZ Tools** (`worker/eztools/runner.py`): `dotnet <Tool>.dll` wrappers, 1hr timeout each, failures return `None` (non-fatal).
 
