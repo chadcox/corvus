@@ -142,6 +142,8 @@ Timeline/filesystem/entity rows carry raw `evidence_source_id` FK columns withou
 
 **Auth** (`apps/api/app/auth/`): local bcrypt provider (constant-time even on missing user), HS256 JWT (480 min, `jti`), Redis-backed revocation denylist (**fails open** unless `AUTH_REVOCATION_FAIL_CLOSED=true`), Redis login lockout (5 attempts / 5 min → 10 min lockout), `OidcAuthProvider` placeholder. No per-case ACL — single-tenant analyst model.
 
+**CSV exports** (`timeline/export`, `evidence/{id}/hashes/export`): both stream rows through `app/util/csv_export.py`, which prefixes cells that a spreadsheet would parse as a formula (leading `=`, `+`, `-`, `@`, or a whitespace control) with `'`. Plain numbers are exempt so negative values stay readable. Escaping applies at the CSV boundary only — stored rows, JSON responses, and worker COPY serialization keep the original bytes. Disable with `CSV_EXPORT_FORMULA_ESCAPE=false`.
+
 **Services**: `opensearch_service.py` (dual-path search; returns `None` on failure to trigger Postgres fallback), `case_purge.py` (DB cascade + disk + OpenSearch cleanup incl. orphan dirs), `ingest_outcome.py` (pure check-list builder), `readiness.py`, `admin_ops.py`, `docker_ops.py`.
 
 **Alembic** (`apps/api/alembic/`): linear 6-revision chain, single head enforced by `tests/test_migration_integrity.py`. Timescale conversion (rev 0004) only fires when `timeline_events` is empty and extension present. CI guard: schema-file changes without a new revision fail (`scripts/require_migration_for_schema_changes.sh`, `.github/workflows/api-migrations.yml`).
@@ -257,6 +259,7 @@ Ingest priority tiers (docs/EVIDENCE-PACKAGE.md, confirmed in code): (1) pre-gen
 - **Module-CSV dedup is substring-based** (`evtxecmd` etc. in filename) — a coincidentally named CSV suppresses raw parsing of that category.
 - **YARA detections** reuse `sigma_detections`; `sample_event_ids` hold file paths for `engine='yara'`.
 - **`DELETE_EVIDENCE_AFTER_INGEST=true`** irreversibly rmtree's the package after success.
+- **CSV exports differ from the API by one leading `'`** on formula-like cells; compare against the JSON endpoints when byte-exact evidence values are needed.
 - **Worker boot reconcile**: every worker start marks all `running` ingest jobs failed (crash recovery) — surprising in dev with frequent restarts.
 - **web dead code**: `SigmaRulesSync.tsx` is unused (superseded by ControlPanelPage rules ops). `TimelineView` duplicates `ResizableSplit` logic inline.
 - **`utils/generated/` files** claim "re-generate from source" but no generator script exists in-repo — effectively vendored static data.

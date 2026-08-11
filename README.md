@@ -249,6 +249,7 @@ Key environment variables (common defaults in [`.env.example`](.env.example); ad
 | `ADMIN_DISK_USAGE_CACHE_SECONDS` | `30` | Cache TTL for expensive admin evidence disk usage scans |
 | `ENVIRONMENT` | `development` | Enforces stricter auth-secret validation in `staging` / `production` |
 | `DELETE_EVIDENCE_AFTER_INGEST` | `false` | Delete extracted evidence files after ingest completes |
+| `CSV_EXPORT_FORMULA_ESCAPE` | `true` | Prefix spreadsheet-formula cells in analyst CSV exports |
 | `ENABLE_ADMIN_API` | `false` | Expose admin/dev endpoints |
 | `ENABLE_VALIDATION_API` | `false` | Expose automated test endpoints |
 | `AUTH_SECRET_KEY` | `change-me-dev-auth-secret` | JWT signing secret for local auth |

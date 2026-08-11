@@ -11,6 +11,13 @@ All notable changes to this project are documented here. Format loosely follows
 - Dependabot config and CodeQL workflow.
 - Volatility 3 (VSL-1.0) entry in third-party notices.
 
+### Security
+- Analyst CSV exports (timeline and file hashes) now neutralize spreadsheet
+  formula injection: cells beginning with `=`, `+`, `-`, `@`, or a whitespace
+  control are prefixed with `'`. Plain numbers are exempt. Stored evidence,
+  JSON API responses, and worker COPY serialization are unchanged. Controlled
+  by `CSV_EXPORT_FORMULA_ESCAPE` (default `true`).
+
 ### Changed
 - Hardened default `docker-compose`: removed the host Docker socket mount from
   the default API service, bound OpenSearch to localhost, and defaulted the
