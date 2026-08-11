@@ -1,0 +1,70 @@
+name: Web Mocked E2E
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-mocked-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mocked-browser-e2e:
+    name: Mocked browser E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The check remains present on every PR, while browser installation only
+      # happens for web changes. Manual runs always execute the suite.
+      - name: Check whether browser tests are needed
+        id: changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
+            apps/web \
+            .github/workflows/web-e2e.yml; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js 26
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install web dependencies
+        if: steps.changes.outputs.run == 'true'
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Install Chromium
+        if: steps.changes.outputs.run == 'true'
+        working-directory: apps/web
+        run: npx playwright install --with-deps --only-shell chromium
+
+      - name: Run mocked browser tests
+        if: steps.changes.outputs.run == 'true'
+        working-directory: apps/web
+        run: npm run test:e2e:mocked
+
+      - name: Skip mocked browser tests
+        if: steps.changes.outputs.run != 'true'
+        run: echo "No web changes; mocked browser tests are not needed."

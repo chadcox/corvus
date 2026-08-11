@@ -1,0 +1,68 @@
+name: Worker Tests
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker-tests:
+    name: Worker test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Keep the job present on every PR so it can safely be made a required
+      # check; only the comparatively expensive test steps are path-aware.
+      - name: Check whether worker tests are needed
+        id: changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
+            apps/worker \
+            packages/corvus_core \
+            .github/workflows/worker-tests.yml; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python 3.14
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: |
+            apps/worker/requirements.txt
+            packages/corvus_core/pyproject.toml
+
+      - name: Install worker dependencies
+        if: steps.changes.outputs.run == 'true'
+        run: python -m pip install ./packages/corvus_core -r apps/worker/requirements.txt
+
+      - name: Run worker test suite
+        if: steps.changes.outputs.run == 'true'
+        working-directory: apps/worker
+        run: python -m pytest -q tests
+
+      - name: Skip worker test suite
+        if: steps.changes.outputs.run != 'true'
+        run: echo "No worker or shared-package changes; worker tests are not needed."

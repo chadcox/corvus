@@ -343,9 +343,19 @@ docker run --rm ff-web-test npm run build
 # Run mocked Playwright flows in the stack
 docker compose run --rm playwright bash -lc 'npm install && npm run test:e2e:ci'
 
+# Run only the deterministic mocked browser checks used by pull-request CI
+cd apps/web && npm ci && npx playwright install --only-shell chromium && npm run test:e2e:mocked
+
 # Run the backend-backed Playwright analyst flow
 docker compose run --rm playwright bash -lc 'npm install && FF_E2E_ADMIN_USERNAME=admin FF_E2E_ADMIN_PASSWORD=admin FF_E2E_API_URL=http://api:8000 npm run test:e2e:backend'
 ```
+
+Pull-request browser CI runs only the API-mocked smoke, analyst, and control-panel
+specs. It excludes the screenshot generator, which writes tracked documentation
+assets, and the backend analyst flow, which requires the full database, search,
+queue, API, worker, and evidence-ingest stack. The backend flow remains an
+opt-in integration check rather than a required PR check so routine web changes
+are not gated on heavyweight forensic tooling and service startup.
 
 ### Docker Compose modes
 
