@@ -97,10 +97,28 @@ def _get(url: str, db: FakeDb):
 
 
 HOSTILE = '=cmd|\' /C calc\'!A0'
+DERIVED_HOSTILE = (
+    'safe;=HYPERLINK("https://example.invalid","click")'
+    "\t＋SUM(A1)"
+    "\r\n-12"
+    "\r＠SUM(A1)"
+    "\n;\t=1+1"
+)
+CSV_DELIMITERS = (",", ";", "\t")
 
 
-def _csv_rows(response) -> list[list[str]]:
-    return list(csv.reader(io.StringIO(response.text, newline="")))
+def _csv_rows(response, *, delimiter: str = ",") -> list[list[str]]:
+    return list(csv.reader(io.StringIO(response.text, newline=""), delimiter=delimiter))
+
+
+def _assert_no_formula_like_data_cells(response) -> None:
+    """Alternate parsing may change columns, but must not expose a formula."""
+    for delimiter in CSV_DELIMITERS:
+        rows = _csv_rows(response, delimiter=delimiter)
+        assert rows
+        for row in rows:
+            for cell in row:
+                assert not is_formula_like(cell), (delimiter, cell)
 
 
 def _assert_quote_all_output(response) -> list[list[str]]:
@@ -154,9 +172,6 @@ def _hash_export(relative_path: str):
         "-1+1cmd",
         "@SUM(A1)",
         '=cmd|\' /C calc\'!A0',
-        "\t=1+1",
-        "\r=1+1",
-        "\n=1+1",
         "＝1+1",
         "＋1+1",
         "－1+1cmd",
@@ -166,6 +181,13 @@ def _hash_export(relative_path: str):
 def test_formula_like_values_are_prefixed(value: str):
     assert is_formula_like(value) is True
     assert escape_csv_cell(value) == "'" + value
+
+
+@pytest.mark.parametrize("control", ["\t", "\r", "\n"])
+def test_control_prefixed_values_and_their_chained_formula_are_prefixed(control: str):
+    value = control + "=1+1"
+    assert is_formula_like(value) is True
+    assert escape_csv_cell(value) == "'" + control + "'=1+1"
 
 
 @pytest.mark.parametrize(
@@ -200,6 +222,44 @@ def test_escape_row_handles_mixed_cells():
     assert escape_csv_row(["=1+1", "ok", 7, None]) == ["'=1+1", "ok", 7, None]
 
 
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("safe;=1+1", "safe;'=1+1"),
+        ("safe\t+1+1", "safe\t'+1+1"),
+        ("safe\r\n-1+1", "safe\r\n'-1+1"),
+        ("safe\r@SUM(A1)", "safe\r'@SUM(A1)"),
+        ("safe\n＝SUM(A1)", "safe\n'＝SUM(A1)"),
+        ("safe;－12", "safe;'－12"),
+    ],
+)
+def test_escape_cell_protects_formula_starts_after_derived_boundaries(
+    value: str, expected: str
+):
+    assert escape_csv_cell(value) == expected
+
+
+def test_escape_cell_protects_chained_boundaries_and_is_idempotent():
+    escaped = escape_csv_cell("safe;\t\r\n=1+1")
+    assert escaped == "safe;'\t'\r\n'=1+1"
+    assert escape_csv_cell(escaped) == escaped
+
+
+def test_plain_number_exception_applies_only_to_the_whole_value():
+    assert escape_csv_cell("-12") == "-12"
+    assert escape_csv_cell("safe;-12") == "safe;'-12"
+    assert escape_csv_cell("-12;safe") == "'-12;safe"
+
+
+def test_escaped_helper_output_has_no_formula_cells_under_supported_parsers():
+    output = io.StringIO(newline="")
+    csv.writer(output, quoting=csv.QUOTE_ALL).writerow(
+        ["first", escape_csv_cell(DERIVED_HOSTILE), "last"]
+    )
+    response = type("Response", (), {"text": output.getvalue()})()
+    _assert_no_formula_like_data_cells(response)
+
+
 # --- endpoint behavior ----------------------------------------------------
 
 
@@ -210,6 +270,7 @@ def test_timeline_export_neutralizes_formula_cells():
     assert rows[0] == TIMELINE_HEADER
     assert rows[1][2] == "'" + HOSTILE
     assert rows[1][4] == "'@evil.evtx"
+    _assert_no_formula_like_data_cells(response)
 
 
 @pytest.mark.parametrize("prefix", ["＝", "＋", "－", "＠"])
@@ -220,13 +281,14 @@ def test_timeline_export_neutralizes_full_width_formula_prefixes(prefix: str):
     assert rows[1][2] == "'" + prefix + "SUM(A1)"
 
 
-def test_timeline_export_quotes_semicolon_locale_formula_suffix():
-    value = "benign prefix;=HYPERLINK(https://example.invalid)"
-    response = _timeline_export(value)
+def test_timeline_export_neutralizes_derived_cells_in_later_fields():
+    response = _timeline_export(DERIVED_HOSTILE, original_source=DERIVED_HOSTILE)
     assert response.status_code == 200, response.text
     rows = _assert_quote_all_output(response)
-    assert rows[1][2] == value
-    assert f'"{value}"' in response.text
+    assert rows[0] == TIMELINE_HEADER
+    assert rows[1][2] == escape_csv_cell(DERIVED_HOSTILE)
+    assert rows[1][4] == escape_csv_cell(DERIVED_HOSTILE)
+    _assert_no_formula_like_data_cells(response)
 
 
 def test_timeline_export_preserves_benign_summary_and_headers():
@@ -255,15 +317,16 @@ def test_hash_export_neutralizes_formula_path():
     assert response.headers["content-disposition"] == (
         'attachment; filename="file-hashes-WKS-042.csv"'
     )
+    _assert_no_formula_like_data_cells(response)
 
 
-def test_hash_export_quotes_semicolon_locale_formula_suffix():
-    value = "Users/analyst/report.docx;=HYPERLINK(https://example.invalid)"
-    response = _hash_export(value)
+def test_hash_export_neutralizes_derived_cells():
+    response = _hash_export(DERIVED_HOSTILE)
     assert response.status_code == 200, response.text
     rows = _assert_quote_all_output(response)
-    assert rows[1][0] == value
-    assert f'"{value}"' in response.text
+    assert rows[0] == HASH_HEADER
+    assert rows[1][0] == escape_csv_cell(DERIVED_HOSTILE)
+    _assert_no_formula_like_data_cells(response)
 
 
 def test_hash_export_preserves_benign_row():
@@ -288,11 +351,17 @@ def test_exports_stay_streaming_responses(export):
     assert "content-length" not in response.headers
 
 
-def test_toggle_disables_escaping(monkeypatch: pytest.MonkeyPatch):
+@pytest.mark.parametrize(
+    ("export", "value_index"),
+    [(_timeline_export, 2), (_hash_export, 0)],
+    ids=["timeline", "hashes"],
+)
+def test_toggle_disables_escaping(
+    monkeypatch: pytest.MonkeyPatch, export, value_index: int
+):
     monkeypatch.setattr(settings, "csv_export_formula_escape", False)
-    response = _timeline_export(HOSTILE)
+    response = export(HOSTILE)
     assert response.status_code == 200, response.text
     rows = _csv_rows(response)
-    assert rows[0] == TIMELINE_HEADER
-    assert rows[1][2] == HOSTILE
-    assert not response.text.startswith('"timestamp_utc"')
+    assert rows[1][value_index] == HOSTILE
+    assert not response.text.startswith('"')
