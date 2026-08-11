@@ -118,6 +118,14 @@ def escape_csv_cell(value: object, *, enabled: bool = True) -> object:
             top_level = False
             continue
 
+        if at_value_start and not top_level and char == '"':
+            # The canonical writer doubles embedded quotes. Alternate-delimiter
+            # parsers can consume that quote run, so it does not end the derived
+            # cell's formula-sensitive start state.
+            escaped.append(char)
+            index += 1
+            continue
+
         escaped.append(char)
         index += 1
         at_value_start = False

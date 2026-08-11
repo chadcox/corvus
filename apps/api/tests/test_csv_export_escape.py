@@ -104,16 +104,30 @@ DERIVED_HOSTILE = (
     "\r＠SUM(A1)"
     "\n;\t=1+1"
 )
+QUOTE_PREFIXED_DERIVED_HOSTILE = (
+    'safe;"=HYPERLINK("https://example.invalid","click")'
+    '\t"＋SUM(A1)'
+    '\r\n"-1+1'
+    '\r"＠SUM(A1)'
+    '\n"=1+1'
+)
 CSV_DELIMITERS = (",", ";", "\t")
 
 
 def _csv_rows(response, *, delimiter: str = ",") -> list[list[str]]:
-    return list(csv.reader(io.StringIO(response.text, newline=""), delimiter=delimiter))
+    payload = (
+        response.content.decode("utf-8")
+        if hasattr(response, "content")
+        else response.text
+    )
+    return list(csv.reader(io.StringIO(payload, newline=""), delimiter=delimiter))
 
 
-def _assert_no_formula_like_data_cells(response) -> None:
+def _assert_no_formula_like_data_cells(
+    response, *, delimiters: tuple[str, ...] = CSV_DELIMITERS
+) -> None:
     """Alternate parsing may change columns, but must not expose a formula."""
-    for delimiter in CSV_DELIMITERS:
+    for delimiter in delimiters:
         rows = _csv_rows(response, delimiter=delimiter)
         assert rows
         for row in rows:
@@ -216,6 +230,10 @@ def test_non_text_cells_pass_through_unchanged():
 def test_escaping_can_be_disabled():
     assert escape_csv_cell("=1+1", enabled=False) == "=1+1"
     assert escape_csv_row(["=1+1", "@x"], enabled=False) == ["=1+1", "@x"]
+    assert (
+        escape_csv_cell(QUOTE_PREFIXED_DERIVED_HOSTILE, enabled=False)
+        == QUOTE_PREFIXED_DERIVED_HOSTILE
+    )
 
 
 def test_escape_row_handles_mixed_cells():
@@ -239,10 +257,27 @@ def test_escape_cell_protects_formula_starts_after_derived_boundaries(
     assert escape_csv_cell(value) == expected
 
 
+@pytest.mark.parametrize("boundary", [";", "\t", "\r", "\n", "\r\n"])
+@pytest.mark.parametrize("formula", ["=1+1", "＠SUM(A1)"])
+def test_escape_cell_keeps_boundary_state_through_csv_quotes(
+    boundary: str, formula: str
+):
+    value = f'safe{boundary}"{formula}'
+    assert escape_csv_cell(value) == f'safe{boundary}"\'{formula}'
+
+
+def test_escape_cell_preserves_harmless_quote_containing_value():
+    value = 'safe;"quoted"\t"notes"\r\n"line"'
+    assert escape_csv_cell(value) == value
+
+
 def test_escape_cell_protects_chained_boundaries_and_is_idempotent():
     escaped = escape_csv_cell("safe;\t\r\n=1+1")
     assert escaped == "safe;'\t'\r\n'=1+1"
     assert escape_csv_cell(escaped) == escaped
+
+    quote_escaped = escape_csv_cell(QUOTE_PREFIXED_DERIVED_HOSTILE)
+    assert escape_csv_cell(quote_escaped) == quote_escaped
 
 
 def test_plain_number_exception_applies_only_to_the_whole_value():
@@ -281,14 +316,17 @@ def test_timeline_export_neutralizes_full_width_formula_prefixes(prefix: str):
     assert rows[1][2] == "'" + prefix + "SUM(A1)"
 
 
-def test_timeline_export_neutralizes_derived_cells_in_later_fields():
-    response = _timeline_export(DERIVED_HOSTILE, original_source=DERIVED_HOSTILE)
+def test_timeline_export_neutralizes_quote_prefixed_derived_cells():
+    response = _timeline_export(
+        QUOTE_PREFIXED_DERIVED_HOSTILE,
+        original_source=QUOTE_PREFIXED_DERIVED_HOSTILE,
+    )
     assert response.status_code == 200, response.text
     rows = _assert_quote_all_output(response)
     assert rows[0] == TIMELINE_HEADER
-    assert rows[1][2] == escape_csv_cell(DERIVED_HOSTILE)
-    assert rows[1][4] == escape_csv_cell(DERIVED_HOSTILE)
-    _assert_no_formula_like_data_cells(response)
+    assert rows[1][2] == escape_csv_cell(QUOTE_PREFIXED_DERIVED_HOSTILE)
+    assert rows[1][4] == escape_csv_cell(QUOTE_PREFIXED_DERIVED_HOSTILE)
+    _assert_no_formula_like_data_cells(response, delimiters=(";", "\t"))
 
 
 def test_timeline_export_preserves_benign_summary_and_headers():
@@ -320,13 +358,13 @@ def test_hash_export_neutralizes_formula_path():
     _assert_no_formula_like_data_cells(response)
 
 
-def test_hash_export_neutralizes_derived_cells():
-    response = _hash_export(DERIVED_HOSTILE)
+def test_hash_export_neutralizes_quote_prefixed_derived_cells():
+    response = _hash_export(QUOTE_PREFIXED_DERIVED_HOSTILE)
     assert response.status_code == 200, response.text
     rows = _assert_quote_all_output(response)
     assert rows[0] == HASH_HEADER
-    assert rows[1][0] == escape_csv_cell(DERIVED_HOSTILE)
-    _assert_no_formula_like_data_cells(response)
+    assert rows[1][0] == escape_csv_cell(QUOTE_PREFIXED_DERIVED_HOSTILE)
+    _assert_no_formula_like_data_cells(response, delimiters=(";", "\t"))
 
 
 def test_hash_export_preserves_benign_row():
@@ -360,8 +398,8 @@ def test_toggle_disables_escaping(
     monkeypatch: pytest.MonkeyPatch, export, value_index: int
 ):
     monkeypatch.setattr(settings, "csv_export_formula_escape", False)
-    response = export(HOSTILE)
+    response = export(QUOTE_PREFIXED_DERIVED_HOSTILE)
     assert response.status_code == 200, response.text
     rows = _csv_rows(response)
-    assert rows[1][value_index] == HOSTILE
+    assert rows[1][value_index] == QUOTE_PREFIXED_DERIVED_HOSTILE
     assert not response.text.startswith('"')
