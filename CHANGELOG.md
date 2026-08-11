@@ -21,10 +21,20 @@ All notable changes to this project are documented here. Format loosely follows
   (default `true`).
 
 ### Changed
+- API archive extraction now rejects uploads whose members claim the same path as
+  both a file and a directory, and enforces a fixed ceiling on the number of
+  distinct path components an archive may declare. That structural ceiling is
+  separate from `EXTRACTED_MAX_FILES`, which still limits file count only. Both
+  checks run before any member is written to disk.
 - Hardened default `docker-compose`: removed the host Docker socket mount from
   the default API service, bound OpenSearch to localhost, and defaulted the
   optional Volatility 3 install to off.
 - `.env.example` no longer ships a working default admin password.
+
+### Fixed
+- Search terms are now matched literally: `%` and `_` in timeline, timeline
+  density histogram, global search, filesystem path, and entity queries are
+  escaped instead of being treated as SQL LIKE wildcards.
 
 ## [0.1.0]
 

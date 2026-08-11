@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Entity, EvidenceSource, FilesystemNode, TimelineEvent
+from app.search_filters import LIKE_ESCAPE_CHAR, like_contains
 from app.services.opensearch_service import opensearch_global_search
 from corvus_core.schemas import EntityRead, FilesystemNodeRead, GlobalSearchResult, TimelineEventRead
 
@@ -27,7 +28,7 @@ _SEARCH_METRICS: deque[tuple[float, str, bool, float]] = deque()
 
 
 def _like(q: str) -> str:
-    return f"%{q}%"
+    return like_contains(q)
 
 
 def _prune_search_metrics(now: float) -> None:
@@ -124,11 +125,11 @@ def global_search(
             .filter(
                 base,
                 or_(
-                    TimelineEvent.summary.ilike(pattern),
-                    TimelineEvent.event_type.ilike(pattern),
-                    TimelineEvent.artifact_type.ilike(pattern),
-                    TimelineEvent.original_source.ilike(pattern),
-                    cast(TimelineEvent.data, String).ilike(pattern),
+                    TimelineEvent.summary.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                    TimelineEvent.event_type.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                    TimelineEvent.artifact_type.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                    TimelineEvent.original_source.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                    cast(TimelineEvent.data, String).ilike(pattern, escape=LIKE_ESCAPE_CHAR),
                 ),
             )
             .order_by(TimelineEvent.timestamp_utc.asc())
@@ -141,8 +142,8 @@ def global_search(
         .filter(
             FilesystemNode.evidence_source_id == source_id,
             or_(
-                FilesystemNode.full_path.ilike(pattern),
-                FilesystemNode.name.ilike(pattern),
+                FilesystemNode.full_path.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                FilesystemNode.name.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
             ),
         )
         .order_by(FilesystemNode.full_path.asc())
@@ -157,9 +158,9 @@ def global_search(
             .filter(
                 Entity.evidence_source_id == source_id,
                 or_(
-                    Entity.display_name.ilike(pattern),
-                    Entity.entity_type.ilike(pattern),
-                    cast(Entity.attributes, String).ilike(pattern),
+                    Entity.display_name.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                    Entity.entity_type.ilike(pattern, escape=LIKE_ESCAPE_CHAR),
+                    cast(Entity.attributes, String).ilike(pattern, escape=LIKE_ESCAPE_CHAR),
                 ),
             )
             .order_by(Entity.entity_type, Entity.display_name)

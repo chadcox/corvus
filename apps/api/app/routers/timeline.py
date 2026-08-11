@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import EvidenceSource, TimelineEvent
+from app.search_filters import LIKE_ESCAPE_CHAR, like_contains
 from app.util.csv_export import csv_writer, escape_csv_row
 from corvus_core.schemas import TimelineEventRead
 
@@ -68,19 +69,19 @@ def _filtered_timeline_query(
     if artifact_type:
         query = query.filter(TimelineEvent.artifact_type == artifact_type)
     if q:
+        like = like_contains(q)
         if browser_only:
-            like = f"%{q}%"
             query = query.filter(
                 or_(
-                    TimelineEvent.summary.ilike(like),
-                    TimelineEvent.data["url"].astext.ilike(like),
-                    TimelineEvent.data["title"].astext.ilike(like),
-                    TimelineEvent.data["message"].astext.ilike(like),
-                    TimelineEvent.data["host"].astext.ilike(like),
+                    TimelineEvent.summary.ilike(like, escape=LIKE_ESCAPE_CHAR),
+                    TimelineEvent.data["url"].astext.ilike(like, escape=LIKE_ESCAPE_CHAR),
+                    TimelineEvent.data["title"].astext.ilike(like, escape=LIKE_ESCAPE_CHAR),
+                    TimelineEvent.data["message"].astext.ilike(like, escape=LIKE_ESCAPE_CHAR),
+                    TimelineEvent.data["host"].astext.ilike(like, escape=LIKE_ESCAPE_CHAR),
                 )
             )
         else:
-            query = query.filter(TimelineEvent.summary.ilike(f"%{q}%"))
+            query = query.filter(TimelineEvent.summary.ilike(like, escape=LIKE_ESCAPE_CHAR))
     if sigma_only:
         query = query.filter(func.coalesce(func.jsonb_array_length(TimelineEvent.sigma_hits), 0) > 0)
     if mft_only:
