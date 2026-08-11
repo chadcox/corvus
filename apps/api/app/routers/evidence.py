@@ -79,6 +79,24 @@ def _extract_upload(dest: Path, upload: UploadFile) -> tuple[str, str, str] | No
         return _copy_upload_with_hashes(upload, out)
 
 
+def _remove_partial_package(evidence_root: Path, package_dir: Path) -> None:
+    """Best-effort removal of a package directory left behind by a failed upload.
+
+    The directory is only removed when it resolves to a strict descendant of the
+    resolved evidence root, so a symlinked ancestor cannot redirect the recursive
+    delete outside the evidence tree. Containment failures skip cleanup and any
+    error here is swallowed: cleanup must never replace the original failure.
+    """
+    try:
+        root = evidence_root.resolve()
+        target = package_dir.resolve()
+        if target == root or not target.is_relative_to(root):
+            return
+        shutil.rmtree(target, ignore_errors=True)
+    except Exception:
+        return
+
+
 def _resolve_package_root(package_dir: Path) -> Path:
     """Find package root when upload ZIP wraps a single folder."""
     if (package_dir / "manifest.json").is_file():
@@ -358,7 +376,9 @@ async def _create_ingest_source(
     db.add(source)
     db.flush()
 
-    package_dir = evidence_root / str(case_id) / str(source.id)
+    # Built from the persisted case and server-generated source identifiers so the
+    # cleanup target below is never derived from request-controlled input.
+    package_dir = evidence_root / str(case.id) / str(source.id)
     try:
         upload_hashes = _extract_upload(package_dir, file)
     except PackageExtractError as exc:
@@ -368,7 +388,7 @@ async def _create_ingest_source(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OSError:
         db.rollback()
-        shutil.rmtree(package_dir, ignore_errors=True)
+        _remove_partial_package(evidence_root, package_dir)
         raise
 
     try:
