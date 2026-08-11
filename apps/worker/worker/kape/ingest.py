@@ -1,6 +1,6 @@
 import concurrent.futures
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -88,15 +88,37 @@ def _browser_profile_label(profile_dir: Path, package_dir: Path) -> str:
         return profile_dir.name
 
 
-def _preparsed_categories(csv_files: list[Path]) -> set[str]:
-    """Categories already represented by pre-parsed EZ Tools module CSVs."""
-    found: set[str] = set()
-    for csv_path in csv_files:
-        lower = csv_path.name.lower()
-        for hint, category in _MODULE_CSV_CATEGORY.items():
-            if hint in lower:
-                found.add(category)
-    return found
+def _module_categories(csv_path: Path) -> set[str]:
+    """Raw-artifact categories a module CSV filename claims to cover."""
+    lower = csv_path.name.lower()
+    return {category for hint, category in _MODULE_CSV_CATEGORY.items() if hint in lower}
+
+
+def _preparsed_categories(
+    csv_event_counts: Sequence[tuple[Path, int]],
+) -> tuple[set[str], dict[str, int]]:
+    """Split module-CSV categories into suppressed and empty-but-present.
+
+    A category only suppresses raw re-parsing when at least one matching module
+    CSV actually contributed timeline events. A header-only CSV — or one whose
+    rows carry no parseable timestamp — yields nothing, so the raw artifacts are
+    the only remaining source for that category and must still be parsed.
+
+    Returns (suppressed_categories, empty_module_csv_counts). The second value
+    counts, per still-unsuppressed category, how many matching module CSVs
+    contributed no events, so the caller can explain the fallback.
+    """
+    suppressed: set[str] = set()
+    empty: dict[str, int] = {}
+    for csv_path, event_count in csv_event_counts:
+        for category in _module_categories(csv_path):
+            if event_count > 0:
+                suppressed.add(category)
+            else:
+                empty[category] = empty.get(category, 0) + 1
+    # A populated CSV anywhere in the package wins: mixed empty/populated
+    # matches stay suppressed and need no note.
+    return suppressed, {c: n for c, n in empty.items() if c not in suppressed}
 
 
 def ingest_package(
@@ -117,8 +139,10 @@ def ingest_package(
     progress(10, "Scanning evidence package")
 
     ingest_notes: list[str] = []
+    csv_event_counts: list[tuple[Path, int]] = []
     for csv_path in layout.csv_files:
         events, note = parse_csv_to_events(csv_path, eid)
+        csv_event_counts.append((csv_path, len(events)))
         timeline.extend(events)
         if note:
             ingest_notes.append(note)
@@ -131,8 +155,15 @@ def ingest_package(
     progress(60, f"Indexed {len(filesystem)} filesystem nodes")
 
     # Skip raw re-parsing for any category the package already ships as a
-    # pre-parsed EZ Tools module CSV — otherwise events are double-counted.
-    preparsed = _preparsed_categories(layout.csv_files)
+    # pre-parsed EZ Tools module CSV that yielded events — otherwise events are
+    # double-counted. A module CSV that contributed nothing suppresses nothing.
+    preparsed, empty_modules = _preparsed_categories(csv_event_counts)
+    for category in sorted(empty_modules):
+        ingest_notes.append(
+            f"{category}: {empty_modules[category]} pre-parsed module CSV(s) contributed no "
+            f"timeline events (empty or no parseable timestamps) — raw {category} parsing "
+            f"not suppressed"
+        )
 
     parsed_dir = package_dir / "_ff_parsed"
     if "evtx" not in preparsed:

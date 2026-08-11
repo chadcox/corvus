@@ -235,7 +235,7 @@ sequenceDiagram
     API-->>UI: status/progress/message
 ```
 
-Ingest priority tiers (docs/EVIDENCE-PACKAGE.md, confirmed in code): (1) pre-generated parser CSV/JSON, (2) raw artifacts when not pre-parsed (dedup via `_preparsed_categories()`), (3) filesystem nodes from collected paths / event path fields.
+Ingest priority tiers (docs/EVIDENCE-PACKAGE.md, confirmed in code): (1) pre-generated parser CSV/JSON, (2) raw artifacts when not pre-parsed (dedup via `_preparsed_categories()`, which suppresses only categories whose module CSV yielded at least one event), (3) filesystem nodes from collected paths / event path fields.
 
 ## Conventions
 
@@ -256,7 +256,7 @@ Ingest priority tiers (docs/EVIDENCE-PACKAGE.md, confirmed in code): (1) pre-gen
 - **Cancellation** is DB-flag polling (`status='failed' AND message LIKE 'cancelled%'`), not Celery revoke.
 - **Partial-write cleanup**: bulk inserts commit per batch; any pipeline failure triggers manual `_clear_source_data()` across four tables + OpenSearch.
 - **`VALIDATION_MODE_FAST`** (`manifest.ff_validation_mode=="fast"`) skips Sigma/Chainsaw/OpenSearch — used by validation harness.
-- **Module-CSV dedup is substring-based** (`evtxecmd` etc. in filename) — a coincidentally named CSV suppresses raw parsing of that category.
+- **Module-CSV dedup is substring-based** (`evtxecmd` etc. in filename) **and event-gated** — a coincidentally named CSV suppresses raw parsing of that category only if it contributed at least one timeline event. A header-only or timestamp-less match suppresses nothing and adds an ingest note; with several matching CSVs, one populated CSV keeps the category suppressed.
 - **YARA detections** reuse `sigma_detections`; `sample_event_ids` hold file paths for `engine='yara'`.
 - **`DELETE_EVIDENCE_AFTER_INGEST=true`** irreversibly rmtree's the package after success.
 - **CSV exports may differ from JSON serialization** by CSV field quoting and one leading `'` on formula-like cells; compare against the JSON endpoints when byte-exact evidence values are needed.

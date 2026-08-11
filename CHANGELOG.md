@@ -34,6 +34,15 @@ All notable changes to this project are documented here. Format loosely follows
 - `.env.example` no longer ships a working default admin password.
 
 ### Fixed
+- An empty pre-parsed module CSV no longer hides the raw artifacts it claims to
+  cover. Ingest previously suppressed raw EVTX, `$MFT`, registry, prefetch, and
+  amcache parsing on filename match alone, so a package shipping a header-only
+  (or timestamp-less) `*_EvtxECmd_Output.csv` next to real `.evtx` files ingested
+  zero events for that category. Suppression now requires the matching module
+  CSV to have contributed at least one timeline event; otherwise the raw parser
+  runs and an ingest note records why. Packages whose module CSVs do contain
+  events are unaffected, and one populated CSV still suppresses the category
+  when other matching CSVs are empty, so no events are double-counted.
 - Worker boot reconciliation no longer marks running ingest jobs as failed by
   default. It previously failed every job in `running` state, so a restart or
   scale-up reported another worker's in-flight ingest as failed while that
