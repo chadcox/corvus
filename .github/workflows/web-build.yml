@@ -1,0 +1,66 @@
+name: Web Production Build
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-production-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-production-build:
+    name: Web production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Keep the job present on every PR so it can safely be made a required
+      # check; only dependency installation and compilation are path-aware.
+      - name: Check whether the web build is needed
+        id: changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
+            apps/web \
+            .github/workflows/web-build.yml; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js 26
+        if: steps.changes.outputs.run == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install web dependencies
+        if: steps.changes.outputs.run == 'true'
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Build web production bundle
+        if: steps.changes.outputs.run == 'true'
+        working-directory: apps/web
+        run: npm run build
+
+      - name: Skip web production build
+        if: steps.changes.outputs.run != 'true'
+        run: echo "No web changes; the production build is not needed."
