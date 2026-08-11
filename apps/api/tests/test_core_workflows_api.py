@@ -222,6 +222,190 @@ def test_upload_then_list_jobs_workflow(monkeypatch, tmp_path: Path):
         app.dependency_overrides.clear()
 
 
+def test_upload_oserror_removes_partial_package_before_persistence(monkeypatch, tmp_path: Path):
+    case_id = uuid.uuid4()
+    db = FakeDb(case_id)
+    evidence_root = tmp_path / "evidence"
+    rollbacks: list[bool] = []
+    queued: list[tuple[str, list[str]]] = []
+
+    monkeypatch.setattr(evidence_router.settings, "evidence_root", str(evidence_root))
+    monkeypatch.setattr(db, "rollback", lambda: rollbacks.append(True))
+    monkeypatch.setattr(
+        evidence_router.celery_app,
+        "send_task",
+        lambda name, args, **_kwargs: queued.append((name, args)),
+    )
+
+    def fail_partial_upload(dest: Path, _upload: UploadFile):
+        dest.mkdir(parents=True)
+        (dest / "partial.bin").write_bytes(b"partial")
+        raise OSError("storage unavailable")
+
+    monkeypatch.setattr(evidence_router, "_extract_upload", fail_partial_upload)
+    upload = UploadFile(filename="evidence.zip", file=BytesIO(b"data"))
+
+    with pytest.raises(OSError, match="storage unavailable"):
+        run(
+            evidence_router.upload_evidence(
+                case_id=case_id,
+                file=upload,
+                hostname=None,
+                platform=None,
+                db=db,
+            )
+        )
+
+    package_dir = evidence_root / str(case_id) / str(db.sources[0].id)
+    assert rollbacks == [True]
+    assert not package_dir.exists()
+    assert db.jobs == []
+    assert queued == []
+
+
+class HostileCaseId:
+    """Request-supplied identifier whose string form is a traversal payload."""
+
+    def __str__(self) -> str:
+        return "../escape"
+
+
+class AnyCaseFakeDb(FakeDb):
+    """FakeDb that resolves any lookup key to its single case."""
+
+    def get(self, model, key):
+        if model is Case:
+            return self.case
+        return super().get(model, key)
+
+
+def _failing_extract(recorded: list[Path]):
+    def fail_partial_upload(dest: Path, _upload: UploadFile):
+        recorded.append(dest)
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "partial.bin").write_bytes(b"partial")
+        raise OSError("storage unavailable")
+
+    return fail_partial_upload
+
+
+def test_upload_cleanup_ignores_request_identifier_for_target(monkeypatch, tmp_path: Path):
+    # A request-controlled identifier must not redirect the write or the cleanup.
+    case_id = uuid.uuid4()
+    db = AnyCaseFakeDb(case_id)
+    evidence_root = tmp_path / "evidence"
+    outside = tmp_path / "escape"
+    outside.mkdir(parents=True)
+    (outside / "keep.txt").write_bytes(b"unrelated")
+    destinations: list[Path] = []
+
+    monkeypatch.setattr(evidence_router.settings, "evidence_root", str(evidence_root))
+    monkeypatch.setattr(evidence_router, "_extract_upload", _failing_extract(destinations))
+
+    upload = UploadFile(filename="evidence.zip", file=BytesIO(b"data"))
+    with pytest.raises(OSError, match="storage unavailable"):
+        run(
+            evidence_router._create_ingest_source(
+                case_id=HostileCaseId(),
+                file=upload,
+                hostname=None,
+                platform=None,
+                db=db,
+            )
+        )
+
+    source_id = db.sources[0].id
+    assert destinations == [evidence_root / str(case_id) / str(source_id)]
+    assert not destinations[0].exists()
+    assert (outside / "keep.txt").is_file()
+    assert db.jobs == []
+
+
+def test_upload_cleanup_skips_symlinked_escape_target(monkeypatch, tmp_path: Path):
+    # A symlinked ancestor must not let the recursive delete leave evidence_root.
+    case_id = uuid.uuid4()
+    db = FakeDb(case_id)
+    evidence_root = tmp_path / "evidence"
+    outside = tmp_path / "outside"
+    outside.mkdir(parents=True)
+    evidence_root.mkdir(parents=True)
+    (evidence_root / str(case_id)).symlink_to(outside, target_is_directory=True)
+    destinations: list[Path] = []
+
+    monkeypatch.setattr(evidence_router.settings, "evidence_root", str(evidence_root))
+    monkeypatch.setattr(evidence_router, "_extract_upload", _failing_extract(destinations))
+
+    upload = UploadFile(filename="evidence.zip", file=BytesIO(b"data"))
+    with pytest.raises(OSError, match="storage unavailable"):
+        run(
+            evidence_router.upload_evidence(
+                case_id=case_id,
+                file=upload,
+                hostname=None,
+                platform=None,
+                db=db,
+            )
+        )
+
+    # Cleanup is skipped rather than following the symlink out of the tree.
+    assert (outside / str(db.sources[0].id) / "partial.bin").is_file()
+    assert outside.is_dir()
+
+
+def test_upload_cleanup_works_when_evidence_root_is_symlinked(monkeypatch, tmp_path: Path):
+    # Both sides are resolved, so a symlinked evidence root still cleans up.
+    case_id = uuid.uuid4()
+    db = FakeDb(case_id)
+    real_root = tmp_path / "real-evidence"
+    real_root.mkdir(parents=True)
+    evidence_root = tmp_path / "evidence"
+    evidence_root.symlink_to(real_root, target_is_directory=True)
+    destinations: list[Path] = []
+
+    monkeypatch.setattr(evidence_router.settings, "evidence_root", str(evidence_root))
+    monkeypatch.setattr(evidence_router, "_extract_upload", _failing_extract(destinations))
+
+    upload = UploadFile(filename="evidence.zip", file=BytesIO(b"data"))
+    with pytest.raises(OSError, match="storage unavailable"):
+        run(
+            evidence_router.upload_evidence(
+                case_id=case_id,
+                file=upload,
+                hostname=None,
+                platform=None,
+                db=db,
+            )
+        )
+
+    source_id = db.sources[0].id
+    assert not (real_root / str(case_id) / str(source_id)).exists()
+    assert real_root.is_dir()
+
+
+def test_upload_stores_configured_package_path_under_symlinked_root(monkeypatch, tmp_path: Path):
+    # Successful uploads keep the configured path shape, not the resolved mount.
+    case_id = uuid.uuid4()
+    db = FakeDb(case_id)
+    real_root = tmp_path / "real-evidence"
+    real_root.mkdir(parents=True)
+    evidence_root = tmp_path / "evidence"
+    evidence_root.symlink_to(real_root, target_is_directory=True)
+
+    monkeypatch.setattr(evidence_router.settings, "evidence_root", str(evidence_root))
+    monkeypatch.setattr(
+        evidence_router.celery_app,
+        "send_task",
+        lambda name, args, **_kwargs: SimpleNamespace(id=args[0]),
+    )
+
+    upload = UploadFile(filename="host-security.evtx", file=BytesIO(b"demo evtx bytes"))
+    run(evidence_router.upload_evidence(case_id=case_id, file=upload, hostname=None, platform=None, db=db))
+
+    source = db.sources[0]
+    assert source.package_path == str(evidence_root / str(case_id) / str(source.id))
+    assert (real_root / str(case_id) / str(source.id) / "host-security.evtx").is_file()
+
+
 def test_upload_filename_path_traversal_is_contained(monkeypatch, tmp_path: Path):
     # H1 regression: a traversal filename must not write outside evidence_root.
     case_id = uuid.uuid4()
