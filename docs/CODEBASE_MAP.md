@@ -173,7 +173,7 @@ Timeline/filesystem/entity rows carry raw `evidence_source_id` FK columns withou
 
 **Bulk write** (`worker/tasks/ingest.py`): timeline via Postgres `COPY` (10k batches) with parameterized-INSERT fallback; `SET LOCAL synchronous_commit TO OFF`; cancellation honored by polling job row between stages (no Celery revoke); on any failure, `_clear_source_data()` deletes partially committed rows + OpenSearch docs.
 
-**Other tasks**: `hash_evidence_files` (thread-pooled sha256/sha1/md5), `refresh_{sigma,chainsaw,yara}_rules` (shell to fetch scripts, status JSON to Redis keys `corvus:{engine}:rules:status`), `recovery.reconcile_orphaned_ingest_jobs` (marks stale running jobs failed on every worker boot via `worker_ready` signal).
+**Other tasks**: `hash_evidence_files` (thread-pooled sha256/sha1/md5), `refresh_{sigma,chainsaw,yara}_rules` (shell to fetch scripts, status JSON to Redis keys `corvus:{engine}:rules:status`), `recovery.reconcile_orphaned_ingest_jobs` (on `worker_ready`, after a bounded grace window in a daemon thread: probes Celery `active`/`reserved`/`scheduled` for ingest task ids — job id == dispatched task id. The probe is presence-only evidence: a non-answering worker is absent from the reply, so an unclaimed job is *not* proof of an orphan. Default `WORKER_RECONCILE_UNCLAIMED_ACTION=skip` logs unclaimed jobs and leaves them `running`; `fail` marks them `error_code='interrupted'` / `error_stage='worker_restart'` and can fail a live ingest on a silent worker).
 
 **EZ Tools** (`worker/eztools/runner.py`): `dotnet <Tool>.dll` wrappers, 1hr timeout each, failures return `None` (non-fatal).
 
@@ -260,7 +260,7 @@ Ingest priority tiers (docs/EVIDENCE-PACKAGE.md, confirmed in code): (1) pre-gen
 - **YARA detections** reuse `sigma_detections`; `sample_event_ids` hold file paths for `engine='yara'`.
 - **`DELETE_EVIDENCE_AFTER_INGEST=true`** irreversibly rmtree's the package after success.
 - **CSV exports may differ from JSON serialization** by CSV field quoting and one leading `'` on formula-like cells; compare against the JSON endpoints when byte-exact evidence values are needed.
-- **Worker boot reconcile**: every worker start marks all `running` ingest jobs failed (crash recovery) — surprising in dev with frequent restarts.
+- **Worker boot reconcile**: the Celery `active`/`reserved`/`scheduled` inspect probe is presence-only, so an unclaimed job is not proof of an orphan. Default `WORKER_RECONCILE_UNCLAIMED_ACTION=skip` logs unclaimed jobs and leaves them `running`; opt-in `fail` marks them `error_code='interrupted'` but can falsely fail a live ingest whose worker did not answer the probe.
 - **web dead code**: `SigmaRulesSync.tsx` is unused (superseded by ControlPanelPage rules ops). `TimelineView` duplicates `ResizableSplit` logic inline.
 - **`utils/generated/` files** claim "re-generate from source" but no generator script exists in-repo — effectively vendored static data.
 - **MftView search** only searches the currently loaded 500-row server page.

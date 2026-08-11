@@ -249,6 +249,9 @@ Key environment variables (common defaults in [`.env.example`](.env.example); ad
 | `ADMIN_DISK_USAGE_CACHE_SECONDS` | `30` | Cache TTL for expensive admin evidence disk usage scans |
 | `ENVIRONMENT` | `development` | Enforces stricter auth-secret validation in `staging` / `production` |
 | `DELETE_EVIDENCE_AFTER_INGEST` | `false` | Delete extracted evidence files after ingest completes |
+| `WORKER_RECONCILE_STARTUP_DELAY_SECONDS` | `15` | Grace window after worker boot before running ingest jobs are checked for ownership |
+| `WORKER_RECONCILE_INSPECT_TIMEOUT_SECONDS` | `5` | Timeout for the Celery ownership probe used by boot reconciliation |
+| `WORKER_RECONCILE_UNCLAIMED_ACTION` | `skip` | Running ingest jobs no worker claims: `skip` leaves them running and logs them; `fail` marks them interrupted, which can fail a live ingest whose worker did not answer the probe |
 | `CSV_EXPORT_FORMULA_ESCAPE` | `true` | Prefix spreadsheet-formula cells in analyst CSV exports |
 | `ENABLE_ADMIN_API` | `false` | Expose admin/dev endpoints |
 | `ENABLE_VALIDATION_API` | `false` | Expose automated test endpoints |
