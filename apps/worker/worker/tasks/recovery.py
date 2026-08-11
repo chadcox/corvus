@@ -19,18 +19,18 @@ RECONCILE_ERROR_STAGE = "worker_restart"
 RECONCILE_MESSAGE = "Ingest interrupted by worker restart"
 
 # Buckets that mean "a worker still owns this task": executing, prefetched, or
-# scheduled with an ETA. All three must be treated as live so a restart never
-# fails a job another worker is about to finish.
+# scheduled with an ETA. Ownership evidence from any of them keeps a job alive,
+# including one a peer worker has only just picked up.
 _INSPECT_BUCKETS = ("active", "reserved", "scheduled")
 
 # Hard ceiling so a mis-set grace window cannot delay recovery indefinitely.
 MAX_STARTUP_DELAY_SECONDS = 300.0
 
-INSPECT_FAILURE_ACTIONS = ("skip", "fail")
-
-
-class InspectUnavailable(RuntimeError):
-    """No worker answered the liveness probe, so ownership is unknown."""
+# What to do with a running job that no responding worker claims. Celery's
+# inspect API cannot prove such a job is gone (see `live_ingest_task_ids`), so
+# `skip` — the default — leaves it alone and only reports it.
+UNCLAIMED_ACTIONS = ("skip", "fail")
+DEFAULT_UNCLAIMED_ACTION = "skip"
 
 
 def _task_ids(entries: Any) -> Iterator[str]:
@@ -52,30 +52,38 @@ def _task_ids(entries: Any) -> Iterator[str]:
 
 
 def live_ingest_task_ids(inspector: Any) -> set[str]:
-    """Return ingest task ids currently claimed by any responding worker.
+    """Return ingest task ids positively observed as claimed by some worker.
 
-    Job ids are dispatched as Celery task ids, so a claimed task id is a job
-    that is still owned. Raises :class:`InspectUnavailable` when no bucket
-    produced a reply, because an empty result and a silent control plane are
-    indistinguishable from the caller's point of view.
+    Job ids are dispatched as Celery task ids, so a task id in a reply is proof
+    that the job is still owned. The converse does not hold: this result is
+    **presence-only evidence**. Celery's inspect API broadcasts to the cluster
+    and returns whatever arrives before the timeout, so a worker that is busy,
+    paused, slow, partitioned, or simply late is silently absent from the reply
+    and is indistinguishable from a worker that answered "I hold nothing". A
+    task id missing from this set therefore proves nothing about that task.
+    Callers must not read absence here as evidence that a job is orphaned.
     """
     live: set[str] = set()
-    replied = False
     for bucket in _INSPECT_BUCKETS:
         probe = getattr(inspector, bucket, None)
         if probe is None:
             continue
         reply = probe()
-        if reply is None:
-            continue
-        replied = True
+        # `None` (nobody answered) and a partial dict carry the same weight:
+        # both add no positive evidence and neither refutes ownership.
         if not isinstance(reply, dict):
             continue
         for entries in reply.values():
             live.update(_task_ids(entries))
-    if not replied:
-        raise InspectUnavailable("no worker replied to the ingest liveness probe")
     return live
+
+
+def _unclaimed_action() -> str:
+    """Normalize the configured action for jobs no responding worker claims."""
+    action = str(settings.worker_reconcile_unclaimed_action or "").strip().lower()
+    if action not in UNCLAIMED_ACTIONS:
+        return DEFAULT_UNCLAIMED_ACTION
+    return action
 
 
 def _default_inspector() -> Any:
@@ -86,34 +94,30 @@ def _default_inspector() -> Any:
     return celery_app.control.inspect(timeout=timeout)
 
 
-def _resolve_live_ids(inspector: Any) -> set[str] | None:
-    """Resolve claimed task ids, or ``None`` when reconciliation must stand down."""
+def _probe_live_ids(inspector: Any) -> set[str]:
+    """Collect presence evidence, treating a broken probe as "no evidence"."""
     try:
         return live_ingest_task_ids(inspector)
     except Exception as exc:
-        action = str(settings.worker_reconcile_on_inspect_failure or "").strip().lower()
-        if action not in INSPECT_FAILURE_ACTIONS:
-            action = "skip"
-        if action == "fail":
-            logger.warning(
-                "reconcile_inspect_unavailable action=fail error=%s", exc.__class__.__name__
-            )
-            return set()
-        logger.warning(
-            "reconcile_inspect_unavailable action=skip error=%s running jobs left untouched",
-            exc.__class__.__name__,
-        )
-        return None
+        # An unreachable control plane yields no positive evidence, which is
+        # already how a silent worker is handled: nothing is proven either way.
+        logger.warning("reconcile_probe_failed error=%s", exc.__class__.__name__)
+        return set()
 
 
 def reconcile_orphaned_ingest_jobs(
     inspector: Any | None = None,
     now: datetime | None = None,
 ) -> int:
-    """Fail running ingest jobs that no live worker owns.
+    """Report running ingest jobs that no responding worker claims.
 
-    Jobs whose task id is still claimed by a responding worker are preserved so
-    a rolling restart never reports a running ingest as failed.
+    Celery's inspect API is presence-only (see :func:`live_ingest_task_ids`): it
+    can prove a job is still owned, never that it is orphaned. So by default
+    (``WORKER_RECONCILE_UNCLAIMED_ACTION=skip``) unclaimed jobs are logged and
+    left running rather than marked failed, because a job held by a worker that
+    did not answer in time is indistinguishable from an abandoned one. Setting
+    the action to ``fail`` opts into the lossy legacy cleanup, which can still
+    mark another worker's live ingest as failed.
     """
     session = get_session()
     stamp = now or datetime.now(timezone.utc)
@@ -134,19 +138,39 @@ def reconcile_orphaned_ingest_jobs(
         # transaction sits idle while workers are polled.
         session.rollback()
 
-        live_ids = _resolve_live_ids(inspector if inspector is not None else _default_inspector())
-        if live_ids is None:
+        live_ids = _probe_live_ids(inspector if inspector is not None else _default_inspector())
+
+        unclaimed_ids = [str(row[0]) for row in rows if str(row[0]) not in live_ids]
+        if not unclaimed_ids:
+            logger.info(
+                "reconcile_all_jobs_claimed running=%d claimed=%d",
+                len(rows),
+                len(live_ids),
+            )
             return 0
 
-        orphan_ids = [str(row[0]) for row in rows if str(row[0]) not in live_ids]
-        if not orphan_ids:
-            logger.info("reconcile_no_orphans running=%d live=%d", len(rows), len(live_ids))
+        action = _unclaimed_action()
+        if action != "fail":
+            # Nothing observed here proves these jobs are gone, so they keep
+            # running and an operator decides. Logged so they stay visible.
+            logger.warning(
+                "reconcile_unclaimed_jobs_left_running action=skip unclaimed=%d "
+                "claimed=%d jobs=%s",
+                len(unclaimed_ids),
+                len(rows) - len(unclaimed_ids),
+                ",".join(sorted(unclaimed_ids)),
+            )
             return 0
 
-        orphan_set = set(orphan_ids)
+        logger.warning(
+            "reconcile_failing_unclaimed_jobs action=fail unclaimed=%d ownership_unproven "
+            "(a worker that did not answer the probe may still hold these jobs)",
+            len(unclaimed_ids),
+        )
+        unclaimed_set = set(unclaimed_ids)
         # A source can carry several jobs; only fail the source when none of its
-        # remaining running jobs are still owned by a live worker.
-        live_source_ids = {str(row[1]) for row in rows if str(row[0]) not in orphan_set}
+        # remaining running jobs are still claimed by a responding worker.
+        live_source_ids = {str(row[1]) for row in rows if str(row[0]) not in unclaimed_set}
 
         updated = session.execute(
             text(
@@ -167,7 +191,7 @@ def reconcile_orphaned_ingest_jobs(
                 "error_code": RECONCILE_ERROR_CODE,
                 "error_stage": RECONCILE_ERROR_STAGE,
                 "now": stamp,
-                "job_ids": orphan_ids,
+                "job_ids": unclaimed_ids,
             },
         ).fetchall()
         # Derived from rows this statement actually changed: a job that finished
@@ -187,9 +211,9 @@ def reconcile_orphaned_ingest_jobs(
             )
         session.commit()
         logger.warning(
-            "reconciled_orphaned_ingest_jobs jobs=%d preserved=%d sources=%s",
+            "reconciled_unclaimed_ingest_jobs jobs=%d preserved=%d sources=%s",
             len(updated),
-            len(rows) - len(orphan_ids),
+            len(rows) - len(unclaimed_ids),
             ",".join(source_ids) or "-",
         )
         return len(updated)

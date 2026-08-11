@@ -34,19 +34,26 @@ All notable changes to this project are documented here. Format loosely follows
 - `.env.example` no longer ships a working default admin password.
 
 ### Fixed
-- Worker boot reconciliation no longer marks every running ingest job as failed.
-  It now probes Celery for the ingest task ids workers currently hold (a job id
-  is dispatched as its task id) and fails only the running jobs that no live
-  worker claims, so a restart or scale-up cannot report another worker's
-  in-flight ingest as failed. Reconciled jobs carry `error_code=interrupted` and
-  `error_stage=worker_restart`; an evidence source is failed only when none of
-  its running jobs survive. The check runs after a bounded startup grace window
-  (`WORKER_RECONCILE_STARTUP_DELAY_SECONDS`, default 15s), skips the probe
-  entirely when no job is running, and when no worker answers the probe follows
-  `WORKER_RECONCILE_ON_INSPECT_FAILURE` (`skip` by default, `fail` to restore
-  the previous mark-everything behaviour). Single-worker crash recovery is
-  unchanged: the rebooted worker holds no ingest tasks, so its stale jobs are
-  still failed.
+- Worker boot reconciliation no longer marks running ingest jobs as failed by
+  default. It previously failed every job in `running` state, so a restart or
+  scale-up reported another worker's in-flight ingest as failed while that
+  ingest kept writing rows. Reconciliation now probes Celery `active`/
+  `reserved`/`scheduled` for the ingest task ids workers hold (a job id is
+  dispatched as its task id), but treats that reply as presence-only evidence:
+  it proves a job is still owned, never that it is orphaned, because a worker
+  that does not answer within the probe timeout is silently absent from the
+  reply and is indistinguishable from an idle one. Jobs no worker claims are
+  therefore logged and left running (`WORKER_RECONCILE_UNCLAIMED_ACTION=skip`,
+  the default). The trade-off is deliberate: a genuinely dead job now stays in
+  `running` until an operator clears it, rather than a live ingest being
+  reported as failed. Setting `WORKER_RECONCILE_UNCLAIMED_ACTION=fail` opts back
+  into failing unclaimed jobs (`error_code=interrupted`,
+  `error_stage=worker_restart`, and the evidence source failed only when none of
+  its running jobs are claimed); that setting can still mark a live ingest as
+  failed when its worker did not answer, so it suits single-worker deployments
+  only. The probe runs after a bounded startup grace window
+  (`WORKER_RECONCILE_STARTUP_DELAY_SECONDS`, default 15s) and is skipped
+  entirely when no job is running.
 - Search terms are now matched literally: `%` and `_` in timeline, timeline
   density histogram, global search, filesystem path, and entity queries are
   escaped instead of being treated as SQL LIKE wildcards.

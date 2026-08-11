@@ -35,5 +35,6 @@ celery_app.conf.update(
 @worker_ready.connect
 def _reconcile_orphaned_jobs_on_start(**kwargs) -> None:
     # Deferred to a background thread: the grace window lets this worker (and
-    # any peer still booting) answer the ownership probe before jobs are judged.
+    # any peer still booting) answer the ownership probe before running jobs are
+    # reported as unclaimed.
     start_startup_reconciliation()

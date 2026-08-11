@@ -46,9 +46,11 @@ class WorkerSettings(BaseSettings):
     # Boot reconciliation of running ingest jobs left behind by a worker restart.
     worker_reconcile_startup_delay_seconds: float = 15.0
     worker_reconcile_inspect_timeout_seconds: float = 5.0
-    # skip = leave running jobs untouched when no worker answers the liveness
-    # probe; fail = treat every running job as orphaned (pre-liveness behaviour).
-    worker_reconcile_on_inspect_failure: str = "skip"
+    # What to do with a running job no responding worker claims. Celery inspect
+    # only proves presence, so absence is never proof of an orphan: skip (the
+    # default) leaves such jobs running and only logs them; fail marks them
+    # interrupted and can still fail a live ingest held by a silent worker.
+    worker_reconcile_unclaimed_action: str = "skip"
     plaso_enabled: bool = True
     plaso_log2timeline_bin: str = "log2timeline"
     plaso_psort_bin: str = "psort"

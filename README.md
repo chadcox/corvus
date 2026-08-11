@@ -251,7 +251,7 @@ Key environment variables (common defaults in [`.env.example`](.env.example); ad
 | `DELETE_EVIDENCE_AFTER_INGEST` | `false` | Delete extracted evidence files after ingest completes |
 | `WORKER_RECONCILE_STARTUP_DELAY_SECONDS` | `15` | Grace window after worker boot before running ingest jobs are checked for ownership |
 | `WORKER_RECONCILE_INSPECT_TIMEOUT_SECONDS` | `5` | Timeout for the Celery ownership probe used by boot reconciliation |
-| `WORKER_RECONCILE_ON_INSPECT_FAILURE` | `skip` | When no worker answers the probe: `skip` (leave running jobs alone) or `fail` (mark them interrupted) |
+| `WORKER_RECONCILE_UNCLAIMED_ACTION` | `skip` | Running ingest jobs no worker claims: `skip` leaves them running and logs them; `fail` marks them interrupted, which can fail a live ingest whose worker did not answer the probe |
 | `CSV_EXPORT_FORMULA_ESCAPE` | `true` | Prefix spreadsheet-formula cells in analyst CSV exports |
 | `ENABLE_ADMIN_API` | `false` | Expose admin/dev endpoints |
 | `ENABLE_VALIDATION_API` | `false` | Expose automated test endpoints |
