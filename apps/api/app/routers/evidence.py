@@ -28,7 +28,7 @@ from app.models import (
 )
 from app.package_extract import PackageExtractError, extract_archive, is_supported_archive
 from app.services.opensearch_service import delete_source_docs
-from app.util.csv_export import escape_csv_row
+from app.util.csv_export import csv_writer, escape_csv_row
 from corvus_core.constants import EvidencePlatform, JobStatus
 from corvus_core.schemas import EvidenceManifest, EvidenceSourceRead, IngestJobRead
 
@@ -668,7 +668,7 @@ def export_file_hashes(
 
     def generate():
         buf = io.StringIO()
-        writer = csv.writer(buf)
+        writer = csv_writer(buf, enabled=escape)
         writer.writerow(["path", "sha256", "sha1", "md5", "size_bytes", "computed_at"])
         yield buf.getvalue()
         for row in query.yield_per(2000):

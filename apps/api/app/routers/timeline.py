@@ -1,4 +1,3 @@
-import csv
 import io
 import re
 from datetime import datetime
@@ -12,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models import EvidenceSource, TimelineEvent
-from app.util.csv_export import escape_csv_row
+from app.util.csv_export import csv_writer, escape_csv_row
 from corvus_core.schemas import TimelineEventRead
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/timeline", tags=["timeline"])
@@ -246,7 +245,7 @@ def export_timeline_csv(
 
     def generate():
         buffer = io.StringIO()
-        writer = csv.writer(buffer)
+        writer = csv_writer(buffer, enabled=escape)
         writer.writerow(
             ["timestamp_utc", "event_type", "summary", "artifact_type", "original_source"]
         )

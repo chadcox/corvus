@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -14,6 +16,16 @@ from app.database import get_db
 from app.main import app
 from app.models import EvidenceFileHash, EvidenceSource, TimelineEvent
 from app.util.csv_export import escape_csv_cell, escape_csv_row, is_formula_like
+
+
+TIMELINE_HEADER = [
+    "timestamp_utc",
+    "event_type",
+    "summary",
+    "artifact_type",
+    "original_source",
+]
+HASH_HEADER = ["path", "sha256", "sha1", "md5", "size_bytes", "computed_at"]
 
 
 @dataclass
@@ -87,6 +99,19 @@ def _get(url: str, db: FakeDb):
 HOSTILE = '=cmd|\' /C calc\'!A0'
 
 
+def _csv_rows(response) -> list[list[str]]:
+    return list(csv.reader(io.StringIO(response.text, newline="")))
+
+
+def _assert_quote_all_output(response) -> list[list[str]]:
+    """Parse the response and verify its canonical all-quoted serialization."""
+    rows = _csv_rows(response)
+    expected = io.StringIO(newline="")
+    csv.writer(expected, quoting=csv.QUOTE_ALL).writerows(rows)
+    assert response.text == expected.getvalue()
+    return rows
+
+
 def _timeline_export(summary: str, original_source: str = "Security.evtx"):
     case_id, source_id = uuid.uuid4(), uuid.uuid4()
     event = TimelineEvent(
@@ -132,6 +157,10 @@ def _hash_export(relative_path: str):
         "\t=1+1",
         "\r=1+1",
         "\n=1+1",
+        "＝1+1",
+        "＋1+1",
+        "－1+1cmd",
+        "＠SUM(A1)",
     ],
 )
 def test_formula_like_values_are_prefixed(value: str):
@@ -177,22 +206,41 @@ def test_escape_row_handles_mixed_cells():
 def test_timeline_export_neutralizes_formula_cells():
     response = _timeline_export(HOSTILE, original_source="@evil.evtx")
     assert response.status_code == 200, response.text
-    body = response.text
-    assert "'" + HOSTILE in body
-    assert "'@evil.evtx" in body
-    # No data cell may begin a formula once quoting is stripped.
-    for line in body.splitlines()[1:]:
-        for cell in line.split(","):
-            assert not cell.strip('"').startswith(("=", "+", "@"))
+    rows = _assert_quote_all_output(response)
+    assert rows[0] == TIMELINE_HEADER
+    assert rows[1][2] == "'" + HOSTILE
+    assert rows[1][4] == "'@evil.evtx"
+
+
+@pytest.mark.parametrize("prefix", ["＝", "＋", "－", "＠"])
+def test_timeline_export_neutralizes_full_width_formula_prefixes(prefix: str):
+    response = _timeline_export(prefix + "SUM(A1)")
+    assert response.status_code == 200, response.text
+    rows = _assert_quote_all_output(response)
+    assert rows[1][2] == "'" + prefix + "SUM(A1)"
+
+
+def test_timeline_export_quotes_semicolon_locale_formula_suffix():
+    value = "benign prefix;=HYPERLINK(https://example.invalid)"
+    response = _timeline_export(value)
+    assert response.status_code == 200, response.text
+    rows = _assert_quote_all_output(response)
+    assert rows[1][2] == value
+    assert f'"{value}"' in response.text
 
 
 def test_timeline_export_preserves_benign_summary_and_headers():
     response = _timeline_export("powershell.exe launched")
     assert response.status_code == 200, response.text
-    lines = response.text.splitlines()
-    assert lines[0] == "timestamp_utc,event_type,summary,artifact_type,original_source"
-    assert "powershell.exe launched" in lines[1]
-    assert "'" not in lines[1]
+    rows = _assert_quote_all_output(response)
+    assert rows[0] == TIMELINE_HEADER
+    assert rows[1] == [
+        "2026-01-02T03:04:05+00:00",
+        "process.create",
+        "powershell.exe launched",
+        "evtx",
+        "Security.evtx",
+    ]
     assert response.headers["content-type"].startswith("text/csv")
     assert response.headers["content-disposition"] == 'attachment; filename="timeline-WKS-042.csv"'
 
@@ -200,31 +248,43 @@ def test_timeline_export_preserves_benign_summary_and_headers():
 def test_hash_export_neutralizes_formula_path():
     response = _hash_export("=HYPERLINK(\"http://x\",\"click\")")
     assert response.status_code == 200, response.text
-    lines = response.text.splitlines()
-    assert lines[0] == "path,sha256,sha1,md5,size_bytes,computed_at"
-    assert lines[1].startswith("\"'=HYPERLINK")
+    rows = _assert_quote_all_output(response)
+    assert rows[0] == HASH_HEADER
+    assert rows[1][0] == "'=HYPERLINK(\"http://x\",\"click\")"
+    assert response.headers["content-type"].startswith("text/csv")
     assert response.headers["content-disposition"] == (
         'attachment; filename="file-hashes-WKS-042.csv"'
     )
 
 
+def test_hash_export_quotes_semicolon_locale_formula_suffix():
+    value = "Users/analyst/report.docx;=HYPERLINK(https://example.invalid)"
+    response = _hash_export(value)
+    assert response.status_code == 200, response.text
+    rows = _assert_quote_all_output(response)
+    assert rows[1][0] == value
+    assert f'"{value}"' in response.text
+
+
 def test_hash_export_preserves_benign_row():
     response = _hash_export("Users/analyst/report.docx")
     assert response.status_code == 200, response.text
-    row = response.text.splitlines()[1]
-    assert row == (
-        "Users/analyst/report.docx,"
-        + "a" * 64
-        + ","
-        + "b" * 40
-        + ","
-        + "c" * 32
-        + ",1024,2026-01-02T03:04:05+00:00"
-    )
+    rows = _assert_quote_all_output(response)
+    assert rows[0] == HASH_HEADER
+    assert rows[1] == [
+        "Users/analyst/report.docx",
+        "a" * 64,
+        "b" * 40,
+        "c" * 32,
+        "1024",
+        "2026-01-02T03:04:05+00:00",
+    ]
 
 
-def test_exports_stay_streaming_responses():
-    response = _timeline_export("powershell.exe launched")
+@pytest.mark.parametrize("export", [_timeline_export, _hash_export], ids=["timeline", "hashes"])
+def test_exports_stay_streaming_responses(export):
+    response = export("powershell.exe launched")
+    assert response.status_code == 200, response.text
     assert "content-length" not in response.headers
 
 
@@ -232,5 +292,7 @@ def test_toggle_disables_escaping(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(settings, "csv_export_formula_escape", False)
     response = _timeline_export(HOSTILE)
     assert response.status_code == 200, response.text
-    assert "'" + HOSTILE not in response.text
-    assert HOSTILE in response.text
+    rows = _csv_rows(response)
+    assert rows[0] == TIMELINE_HEADER
+    assert rows[1][2] == HOSTILE
+    assert not response.text.startswith('"timestamp_utc"')

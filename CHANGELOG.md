@@ -13,10 +13,12 @@ All notable changes to this project are documented here. Format loosely follows
 
 ### Security
 - Analyst CSV exports (timeline and file hashes) now neutralize spreadsheet
-  formula injection: cells beginning with `=`, `+`, `-`, `@`, or a whitespace
-  control are prefixed with `'`. Plain numbers are exempt. Stored evidence,
-  JSON API responses, and worker COPY serialization are unchanged. Controlled
-  by `CSV_EXPORT_FORMULA_ESCAPE` (default `true`).
+  formula injection: cells beginning with `=`, `+`, `-`, `@`, their full-width
+  forms, or a whitespace control are prefixed with `'`, and every field is
+  quoted to keep embedded locale delimiters inside its logical cell. Plain
+  numbers are exempt. Stored evidence, JSON API responses, and worker COPY
+  serialization are unchanged. Controlled by `CSV_EXPORT_FORMULA_ESCAPE`
+  (default `true`).
 
 ### Changed
 - Hardened default `docker-compose`: removed the host Docker socket mount from
