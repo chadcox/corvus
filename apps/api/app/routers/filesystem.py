@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import EvidenceFileHash, EvidenceSource, FilesystemNode
+from app.search_filters import LIKE_ESCAPE_CHAR, like_contains
 from corvus_core.schemas import FilesystemNodeRead
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/filesystem", tags=["filesystem"])
@@ -170,7 +171,7 @@ def search_paths(
         db.query(FilesystemNode)
         .filter(
             FilesystemNode.evidence_source_id == source_id,
-            FilesystemNode.full_path.ilike(f"%{q}%"),
+            FilesystemNode.full_path.ilike(like_contains(q), escape=LIKE_ESCAPE_CHAR),
         )
         .limit(limit)
         .all()
