@@ -11,6 +11,17 @@ All notable changes to this project are documented here. Format loosely follows
 - Dependabot config and CodeQL workflow.
 - Volatility 3 (VSL-1.0) entry in third-party notices.
 
+### Security
+- Analyst CSV exports (timeline and file hashes) now neutralize spreadsheet
+  formula injection: cells beginning with `=`, `+`, `-`, `@`, their full-width
+  forms, or a whitespace control are prefixed with `'`. Formula-like starts
+  after semicolon, tab, or line boundaries are also prefixed so parsing the
+  canonical comma stream with those alternate delimiters cannot expose them as
+  active data cells. Plain numbers are exempt only when they comprise the whole
+  original value. Stored evidence, JSON API responses, and worker COPY
+  serialization are unchanged. Controlled by `CSV_EXPORT_FORMULA_ESCAPE`
+  (default `true`).
+
 ### Changed
 - API archive extraction now rejects uploads whose members claim the same path as
   both a file and a directory, and enforces a fixed ceiling on the number of

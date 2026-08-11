@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import csv
 import uuid
 from asyncio import run
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -874,7 +875,8 @@ def test_evidence_hash_status_and_export():
         export_res = client.get(f"/api/v1/cases/{case_id}/evidence/{source_id}/hashes/export")
         assert export_res.status_code == 200, export_res.text
         assert "text/csv" in export_res.headers.get("content-type", "")
-        assert "path,sha256,sha1,md5,size_bytes,computed_at" in export_res.text
-        assert "C/a.txt" in export_res.text
+        csv_rows = list(csv.reader(StringIO(export_res.text, newline="")))
+        assert csv_rows[0] == ["path", "sha256", "sha1", "md5", "size_bytes", "computed_at"]
+        assert csv_rows[1][0] == "C/a.txt"
     finally:
         app.dependency_overrides.clear()

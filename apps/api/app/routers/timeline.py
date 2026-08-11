@@ -1,4 +1,3 @@
-import csv
 import io
 import re
 from datetime import datetime
@@ -9,9 +8,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.models import EvidenceSource, TimelineEvent
 from app.search_filters import LIKE_ESCAPE_CHAR, like_contains
+from app.util.csv_export import csv_writer, escape_csv_row
 from corvus_core.schemas import TimelineEventRead
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/timeline", tags=["timeline"])
@@ -241,9 +242,11 @@ def export_timeline_csv(
         .limit(EXPORT_MAX)
     )
 
+    escape = settings.csv_export_formula_escape
+
     def generate():
         buffer = io.StringIO()
-        writer = csv.writer(buffer)
+        writer = csv_writer(buffer, enabled=escape)
         writer.writerow(
             ["timestamp_utc", "event_type", "summary", "artifact_type", "original_source"]
         )
@@ -252,13 +255,16 @@ def export_timeline_csv(
             buffer.seek(0)
             buffer.truncate(0)
             writer.writerow(
-                [
-                    ev.timestamp_utc.isoformat(),
-                    ev.event_type,
-                    ev.summary,
-                    ev.artifact_type or "",
-                    ev.original_source or "",
-                ]
+                escape_csv_row(
+                    [
+                        ev.timestamp_utc.isoformat(),
+                        ev.event_type,
+                        ev.summary,
+                        ev.artifact_type or "",
+                        ev.original_source or "",
+                    ],
+                    enabled=escape,
+                )
             )
             yield buffer.getvalue()
 

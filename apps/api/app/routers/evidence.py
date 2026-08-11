@@ -28,6 +28,7 @@ from app.models import (
 )
 from app.package_extract import PackageExtractError, extract_archive, is_supported_archive
 from app.services.opensearch_service import delete_source_docs
+from app.util.csv_export import csv_writer, escape_csv_row
 from corvus_core.constants import EvidencePlatform, JobStatus
 from corvus_core.schemas import EvidenceManifest, EvidenceSourceRead, IngestJobRead
 
@@ -663,22 +664,24 @@ def export_file_hashes(
         .order_by(EvidenceFileHash.relative_path)
     )
 
+    escape = settings.csv_export_formula_escape
+
     def generate():
         buf = io.StringIO()
-        writer = csv.writer(buf)
+        writer = csv_writer(buf, enabled=escape)
         writer.writerow(["path", "sha256", "sha1", "md5", "size_bytes", "computed_at"])
         yield buf.getvalue()
         for row in query.yield_per(2000):
             buf.seek(0)
             buf.truncate(0)
-            writer.writerow([
+            writer.writerow(escape_csv_row([
                 row.relative_path,
                 row.sha256,
                 row.sha1,
                 row.md5,
                 row.file_size or "",
                 row.computed_at.isoformat(),
-            ])
+            ], enabled=escape))
             yield buf.getvalue()
 
     safe_host = re.sub(r"[^A-Za-z0-9._-]", "_", source.hostname or "host")
