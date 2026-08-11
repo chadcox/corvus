@@ -366,6 +366,10 @@ async def _create_ingest_source(
         if package_dir.exists():
             shutil.rmtree(package_dir, ignore_errors=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError:
+        db.rollback()
+        shutil.rmtree(package_dir, ignore_errors=True)
+        raise
 
     try:
         manifest = _load_manifest(package_dir)

@@ -222,6 +222,47 @@ def test_upload_then_list_jobs_workflow(monkeypatch, tmp_path: Path):
         app.dependency_overrides.clear()
 
 
+def test_upload_oserror_removes_partial_package_before_persistence(monkeypatch, tmp_path: Path):
+    case_id = uuid.uuid4()
+    db = FakeDb(case_id)
+    evidence_root = tmp_path / "evidence"
+    rollbacks: list[bool] = []
+    queued: list[tuple[str, list[str]]] = []
+
+    monkeypatch.setattr(evidence_router.settings, "evidence_root", str(evidence_root))
+    monkeypatch.setattr(db, "rollback", lambda: rollbacks.append(True))
+    monkeypatch.setattr(
+        evidence_router.celery_app,
+        "send_task",
+        lambda name, args, **_kwargs: queued.append((name, args)),
+    )
+
+    def fail_partial_upload(dest: Path, _upload: UploadFile):
+        dest.mkdir(parents=True)
+        (dest / "partial.bin").write_bytes(b"partial")
+        raise OSError("storage unavailable")
+
+    monkeypatch.setattr(evidence_router, "_extract_upload", fail_partial_upload)
+    upload = UploadFile(filename="evidence.zip", file=BytesIO(b"data"))
+
+    with pytest.raises(OSError, match="storage unavailable"):
+        run(
+            evidence_router.upload_evidence(
+                case_id=case_id,
+                file=upload,
+                hostname=None,
+                platform=None,
+                db=db,
+            )
+        )
+
+    package_dir = evidence_root / str(case_id) / str(db.sources[0].id)
+    assert rollbacks == [True]
+    assert not package_dir.exists()
+    assert db.jobs == []
+    assert queued == []
+
+
 def test_upload_filename_path_traversal_is_contained(monkeypatch, tmp_path: Path):
     # H1 regression: a traversal filename must not write outside evidence_root.
     case_id = uuid.uuid4()

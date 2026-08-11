@@ -34,6 +34,9 @@ All notable changes to this project are documented here. Format loosely follows
 - `.env.example` no longer ships a working default admin password.
 
 ### Fixed
+- Failed API uploads now remove their newly created evidence directory when
+  package storage or extraction raises `OSError` before database persistence.
+  The original exception is preserved and cleanup remains best-effort.
 - Worker boot reconciliation no longer marks running ingest jobs as failed by
   default. It previously failed every job in `running` state, so a restart or
   scale-up reported another worker's in-flight ingest as failed while that
