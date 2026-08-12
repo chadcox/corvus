@@ -43,6 +43,12 @@ All notable changes to this project are documented here. Format loosely follows
   runs and an ingest note records why. Packages whose module CSVs do contain
   events are unaffected, and one populated CSV still suppresses the category
   when other matching CSVs are empty, so no events are double-counted.
+- Failed API uploads now remove their newly created evidence directory when
+  package storage or extraction raises `OSError` before database persistence.
+  The original exception is preserved and cleanup remains best-effort. The
+  removal target is built from the persisted case and server-generated source
+  identifiers and is only deleted when it resolves to a strict descendant of the
+  resolved evidence root, so a symlinked ancestor cannot redirect the delete.
 - Worker boot reconciliation no longer marks running ingest jobs as failed by
   default. It previously failed every job in `running` state, so a restart or
   scale-up reported another worker's in-flight ingest as failed while that
