@@ -74,6 +74,49 @@ test('timeline loads additional server pages when scrolled deep into the list', 
   await expect.poll(() => requestedOffsets).toContain(expectedLastPageOffset);
 });
 
+test('timeline warns before exporting a CSV the API would truncate', async ({ page }) => {
+  await installApiMocks(page, {
+    authedInitially: true,
+    timelineTotal: 3,
+    timelineExportRowLimit: 2,
+  });
+
+  await gotoApp(page, '/cases/22222222-2222-2222-2222-222222222222');
+  await expect(page.getByText(/Loaded .* of 3 events/)).toBeVisible();
+
+  const exportLink = page.getByRole('link', { name: 'Export CSV' });
+  await expect(exportLink).toHaveAttribute('href', /\/timeline\/export/);
+  await exportLink.click();
+
+  // The click is intercepted, so no download starts until the analyst confirms.
+  const dialog = page.getByRole('alertdialog', { name: 'Export will be truncated' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('capped at 2 rows');
+  await expect(dialog).toContainText('2 oldest matching events');
+  await expect(dialog.getByRole('button', { name: 'Export partial CSV' })).toBeVisible();
+
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/cases\/22222222-2222-2222-2222-222222222222$/);
+});
+
+test('timeline exports without a warning when the result fits the cap', async ({ page }) => {
+  await installApiMocks(page, {
+    authedInitially: true,
+    timelineTotal: 2,
+    timelineExportRowLimit: 2,
+  });
+
+  await gotoApp(page, '/cases/22222222-2222-2222-2222-222222222222');
+  await expect(page.getByText(/Loaded .* of 2 events/)).toBeVisible();
+
+  // At (not above) the cap the export is complete, so the click is not
+  // intercepted and the analyst is not interrupted.
+  await page.getByRole('link', { name: 'Export CSV' }).click();
+  await expect(page.getByRole('alertdialog', { name: 'Export will be truncated' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Export CSV' })).toBeVisible();
+});
+
 test('danger confirmation is modal, labelled, and restores focus', async ({ page }) => {
   await installApiMocks(page, { authedInitially: true });
   await gotoApp(page, '/');

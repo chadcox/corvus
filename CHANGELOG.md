@@ -23,6 +23,14 @@ All notable changes to this project are documented here. Format loosely follows
   (default `true`).
 
 ### Changed
+- Timeline CSV export truncation is no longer silent. Exports are still capped at
+  50,000 rows by default, but the response now carries
+  `X-Corvus-Export-Truncated`, `X-Corvus-Export-Row-Limit`,
+  `X-Corvus-Export-Row-Count`, and `X-Corvus-Export-Total-Matches` headers, and
+  the timeline view asks for confirmation before downloading a partial export.
+  The CSV bytes are unchanged, so a capped export still contains only evidence
+  rows. The cap is configurable with `TIMELINE_EXPORT_MAX_ROWS`, and
+  `timeline/count` additionally reports `export_row_limit`.
 - API archive extraction now rejects uploads whose members claim the same path as
   both a file and a directory, and enforces a fixed ceiling on the number of
   distinct path components an archive may declare. That structural ceiling is

@@ -48,6 +48,7 @@ type MockOptions = {
   onHashCompute?: () => void;
   onYaraScan?: () => void;
   timelineTotal?: number;
+  timelineExportRowLimit?: number;
   onTimelineRequest?: (params: { limit: number; offset: number }) => void;
   adminJobs?: Array<Record<string, unknown>>;
   sourceStatus?: string;
@@ -70,6 +71,7 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     onHashCompute,
     onYaraScan,
     timelineTotal = 1,
+    timelineExportRowLimit = 50000,
     onTimelineRequest,
     adminJobs = [],
     sourceStatus = baseSource.status,
@@ -215,7 +217,7 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     }
 
     if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/timeline\/count/.test(path) && method === 'GET') {
-      await json(route, { count: timelineTotal });
+      await json(route, { count: timelineTotal, export_row_limit: timelineExportRowLimit });
       return;
     }
 

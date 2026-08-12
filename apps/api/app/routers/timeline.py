@@ -19,6 +19,25 @@ router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/timeline", tags=
 
 EXPORT_MAX = 50_000
 
+# Additive response headers that make CSV export truncation explicit. The CSV
+# body itself is unchanged: a spreadsheet-safe export must not carry a warning
+# row that downstream tooling would read as evidence.
+EXPORT_TRUNCATED_HEADER = "X-Corvus-Export-Truncated"
+EXPORT_ROW_LIMIT_HEADER = "X-Corvus-Export-Row-Limit"
+EXPORT_ROW_COUNT_HEADER = "X-Corvus-Export-Row-Count"
+EXPORT_TOTAL_MATCHES_HEADER = "X-Corvus-Export-Total-Matches"
+
+
+def export_row_limit() -> int:
+    """Resolve the configured export row cap.
+
+    A non-positive setting would silently produce an empty or unbounded export,
+    so fall back to the documented default instead.
+    """
+    configured = settings.timeline_export_max_rows
+    return configured if configured > 0 else EXPORT_MAX
+
+
 BROWSER_CATEGORY_TYPES: dict[str, list[str]] = {
     "visits": ["browser.visit"],
     "downloads": ["browser.download"],
@@ -182,7 +201,11 @@ def count_timeline_events(
     browser_category: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> dict[str, int]:
-    """Return the filtered total count (no rows materialized)."""
+    """Return the filtered total count (no rows materialized).
+
+    ``export_row_limit`` is reported alongside so callers can tell, before
+    starting a download, whether the CSV export would be truncated.
+    """
     _get_source(db, case_id, source_id)
     query = _filtered_timeline_query(
         db,
@@ -198,7 +221,7 @@ def count_timeline_events(
         browser_category=browser_category,
     )
     count = query.order_by(None).with_entities(func.count()).scalar() or 0
-    return {"count": count}
+    return {"count": count, "export_row_limit": export_row_limit()}
 
 
 @router.get("/export")
@@ -216,31 +239,41 @@ def export_timeline_csv(
     browser_category: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Download filtered timeline events as CSV for reporting."""
+    """Download filtered timeline events as CSV for reporting.
+
+    The export is capped at ``TIMELINE_EXPORT_MAX_ROWS`` rows. Truncation is
+    reported in additive ``X-Corvus-Export-*`` response headers rather than in
+    the CSV body, so a partial export is never mistaken for a complete one.
+    """
     source = _get_source(db, case_id, source_id)
-    query = (
-        _filtered_timeline_query(
-            db,
-            source_id,
-            start=start,
-            end=end,
-            event_type=event_type,
-            artifact_type=artifact_type,
-            q=q,
-            sigma_only=sigma_only,
-            mft_only=mft_only,
-            browser_only=browser_only,
-            browser_category=browser_category,
-        )
-        .with_entities(
-            TimelineEvent.timestamp_utc,
-            TimelineEvent.event_type,
-            TimelineEvent.summary,
-            TimelineEvent.artifact_type,
-            TimelineEvent.original_source,
-        )
-        .limit(EXPORT_MAX)
+    filtered = _filtered_timeline_query(
+        db,
+        source_id,
+        start=start,
+        end=end,
+        event_type=event_type,
+        artifact_type=artifact_type,
+        q=q,
+        sigma_only=sigma_only,
+        mft_only=mft_only,
+        browser_only=browser_only,
+        browser_category=browser_category,
     )
+
+    # Headers must be settled before the body streams, so the match total comes
+    # from a count query rather than from tallying yielded rows.
+    row_limit = export_row_limit()
+    total_matches = filtered.order_by(None).with_entities(func.count()).scalar() or 0
+    row_count = min(total_matches, row_limit)
+    truncated = total_matches > row_limit
+
+    query = filtered.with_entities(
+        TimelineEvent.timestamp_utc,
+        TimelineEvent.event_type,
+        TimelineEvent.summary,
+        TimelineEvent.artifact_type,
+        TimelineEvent.original_source,
+    ).limit(row_limit)
 
     escape = settings.csv_export_formula_escape
 
@@ -270,8 +303,22 @@ def export_timeline_csv(
 
     safe_host = re.sub(r"[^A-Za-z0-9._-]", "_", source.hostname or "host")
     filename = f"timeline-{safe_host}.csv"
-    return StreamingResponse(
-        generate(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        EXPORT_TRUNCATED_HEADER: "true" if truncated else "false",
+        EXPORT_ROW_LIMIT_HEADER: str(row_limit),
+        EXPORT_ROW_COUNT_HEADER: str(row_count),
+        EXPORT_TOTAL_MATCHES_HEADER: str(total_matches),
+        # The web app is served from a different origin, so these headers are
+        # unreadable by browser callers unless CORS exposes them explicitly.
+        "Access-Control-Expose-Headers": ", ".join(
+            [
+                "Content-Disposition",
+                EXPORT_TRUNCATED_HEADER,
+                EXPORT_ROW_LIMIT_HEADER,
+                EXPORT_ROW_COUNT_HEADER,
+                EXPORT_TOTAL_MATCHES_HEADER,
+            ]
+        ),
+    }
+    return StreamingResponse(generate(), media_type="text/csv", headers=headers)

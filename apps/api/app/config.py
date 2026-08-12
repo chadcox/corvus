@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     auth_bootstrap_admin_username: str = ""
     auth_bootstrap_admin_password: str = ""
     csv_export_formula_escape: bool = True
+    timeline_export_max_rows: int = 50_000
     admin_disk_usage_cache_seconds: int = 30
     docker_compose_project: str = "corvus"
     environment: str = "development"

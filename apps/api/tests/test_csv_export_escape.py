@@ -52,6 +52,10 @@ class FakeQuery:
     def limit(self, *_args, **_kwargs):
         return self
 
+    def scalar(self):
+        """Stand in for the export's ``func.count()`` query."""
+        return len(self.rows)
+
     def first(self):
         return self.rows[0] if self.rows else None
 

@@ -2,11 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, Entity, TimelineEvent, TimelineHistogram } from "../api/client";
+import ConfirmDialog from "./ConfirmDialog";
 import { SigmaEventBadges } from "./SigmaFindingsPanel";
 import TimelineChart from "./TimelineChart";
 import { formatEventTypeLabel } from "../utils/eventCodes";
 
 const PAGE_SIZE = 10000;
+// Mirrors the API default (TIMELINE_EXPORT_MAX_ROWS); the live cap is read from
+// the timeline count response so a reconfigured server stays in sync.
+const DEFAULT_EXPORT_ROW_LIMIT = 50000;
 type RowDensity = "compact" | "analyst";
 const PIVOT_FIELDS = [
   "UserName",
@@ -132,6 +136,8 @@ export default function TimelineView({
   const [loading, setLoading] = useState(true);
   const [loadingPageCount, setLoadingPageCount] = useState(0);
   const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [exportRowLimit, setExportRowLimit] = useState(DEFAULT_EXPORT_ROW_LIMIT);
+  const [confirmTruncatedExport, setConfirmTruncatedExport] = useState(false);
   const [pagingError, setPagingError] = useState<string | null>(null);
   const [sigmaOnly, setSigmaOnly] = useState(sigmaOnlyProp);
   const [histogram, setHistogram] = useState<TimelineHistogram | null>(null);
@@ -247,18 +253,19 @@ export default function TimelineView({
       limit: PAGE_SIZE,
       offset: 0,
     });
-    const countReq = api
-      .countTimeline(caseId, sourceId, filterOpts)
-      .then((r) => r.count)
-      .catch(() => null);
+    const countReq = api.countTimeline(caseId, sourceId, filterOpts).catch(() => null);
     Promise.all([listReq, countReq])
-      .then(([list, count]) => {
+      .then(([list, counts]) => {
         if (version !== queryVersionRef.current) return;
         loadedPagesRef.current.add(0);
         setEventsByIndex(
           Object.fromEntries(list.map((event, index) => [index, event]))
         );
-        setTotalCount(count ?? list.length);
+        setTotalCount(counts?.count ?? list.length);
+        // Older API builds omit the cap; keep the shipped default in that case.
+        if (counts?.export_row_limit != null && counts.export_row_limit > 0) {
+          setExportRowLimit(counts.export_row_limit);
+        }
         setPagingError(null);
         if (focusEvent && !q && !eventType && !artifactType && !start && !end) {
           const hit = list.find((e) => e.id === focusEvent.id);
@@ -373,6 +380,11 @@ export default function TimelineView({
       .catch(() => setLinkedEntities([]));
   }, [caseId, sourceId, selected]);
 
+  const exportUrl = api.timelineExportUrl(caseId, sourceId, filterOpts);
+  // The API caps the CSV at exportRowLimit rows, so anything above that count
+  // downloads a partial timeline. Warn before the download rather than after.
+  const exportWouldTruncate = totalCount != null && totalCount > exportRowLimit;
+
   const hasFilters = Boolean(q || eventType || artifactType || start || end);
   const pivotValues = selected
     ? PIVOT_FIELDS.map((field) => [field, valueText(selected.data[field])] as const)
@@ -439,9 +451,14 @@ export default function TimelineView({
               <option value="analyst">Analyst rows</option>
             </select>
             <a
-              href={api.timelineExportUrl(caseId, sourceId, filterOpts)}
+              href={exportUrl}
               className="export-link"
               download
+              onClick={(event) => {
+                if (!exportWouldTruncate) return;
+                event.preventDefault();
+                setConfirmTruncatedExport(true);
+              }}
             >
               Export CSV
             </a>
@@ -776,6 +793,26 @@ export default function TimelineView({
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmTruncatedExport}
+        title="Export will be truncated"
+        message={
+          <>
+            This filter matches <strong>{(totalCount ?? 0).toLocaleString()}</strong> events, but the
+            CSV export is capped at <strong>{exportRowLimit.toLocaleString()}</strong> rows. Only the{" "}
+            <strong>{exportRowLimit.toLocaleString()}</strong> oldest matching events (by timestamp)
+            will be written; later events will be missing from the file. Narrow the time range or
+            filters for a complete export.
+          </>
+        }
+        confirmLabel="Export partial CSV"
+        onCancel={() => setConfirmTruncatedExport(false)}
+        onConfirm={() => {
+          setConfirmTruncatedExport(false);
+          window.location.href = exportUrl;
+        }}
+      />
     </div>
   );
 }

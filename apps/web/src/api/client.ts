@@ -527,7 +527,7 @@ export const api = {
     if (opts?.browserOnly) params.set("browser_only", "true");
     if (opts?.browserCategory) params.set("browser_category", opts.browserCategory);
     const qs = params.toString();
-    return request<{ count: number }>(
+    return request<{ count: number; export_row_limit?: number }>(
       `/api/v1/cases/${caseId}/sources/${sourceId}/timeline/count${qs ? `?${qs}` : ""}`
     );
   },
