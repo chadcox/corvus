@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { baseSource, gotoApp, installApiMocks, loginViaUi } from './helpers';
+import { baseCase, baseSource, gotoApp, installApiMocks, loginViaUi } from './helpers';
 
 test('analyst can create a case and land on case workspace', async ({ page }) => {
   await installApiMocks(page, { authedInitially: false, allowCaseCreate: true });
@@ -166,4 +166,48 @@ test('evidence action remains scoped to its source while the request is pending'
   releaseHashRequest();
   await expect(page.getByRole('button', { name: 'Hash all evidence files' })).toBeEnabled();
   await expect(page.getByText('Hashing files…')).toHaveCount(0);
+});
+
+test('ingest diagnostics keep notes that contain the summary separator', async ({ page }) => {
+  // A completed ingest message is "<summary> — <note>; <note>", and a note may
+  // itself contain " — " (the empty-module-CSV fallback note does). Only the
+  // first separator ends the summary; the rest belongs to the notes.
+  const fallbackNote =
+    'evtx: 1 pre-parsed module CSV(s) contributed no timeline events '
+    + '(empty or no parseable timestamps) — raw evtx parsing not suppressed';
+  const sigmaNote = 'Sigma matched 2 of 3 events';
+  const summary = 'Ingested 12 events, 3 entities, 4 filesystem nodes';
+
+  await installApiMocks(page, {
+    authedInitially: true,
+    // Source still marked busy so the workspace keeps the ingest panel mounted
+    // while the job itself has completed.
+    sourceStatus: 'running',
+    sourceJobs: [
+      {
+        id: '44444444-4444-4444-4444-444444444444',
+        evidence_source_id: baseSource.id,
+        status: 'completed',
+        progress: 100,
+        message: `${summary} — ${fallbackNote}; ${sigmaNote}`,
+        error_code: null,
+        error_stage: null,
+        started_at: '2026-01-01T00:00:00Z',
+        finished_at: '2026-01-01T00:01:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+  });
+
+  await gotoApp(page, `/cases/${baseCase.id}`);
+
+  const panel = page.locator('.ingest-status-panel');
+  await expect(panel.locator('.ingest-status-detail')).toHaveText(summary);
+
+  const notes = panel.locator('.ingest-diagnostics li');
+  await expect(notes).toHaveCount(2);
+  // The tail after the note's own separator must survive.
+  await expect(notes.nth(0)).toHaveText(fallbackNote);
+  await expect(notes.nth(0)).toContainText('raw evtx parsing not suppressed');
+  await expect(notes.nth(1)).toHaveText(sigmaNote);
 });

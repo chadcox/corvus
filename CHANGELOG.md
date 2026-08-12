@@ -43,6 +43,12 @@ All notable changes to this project are documented here. Format loosely follows
   runs and an ingest note records why. Packages whose module CSVs do contain
   events are unaffected, and one populated CSV still suppresses the category
   when other matching CSVs are empty, so no events are double-counted.
+- The ingest status panel no longer truncates diagnostics. A completed job
+  message is `<summary> — <note>; <note>`, and the empty-module-CSV fallback
+  note added above embeds ` — ` itself, so splitting on the separator with a
+  limit dropped everything past the second one and hid the `raw <category>
+  parsing not suppressed` tail. The panel now splits at the first separator
+  only and keeps the remainder intact.
 - Failed API uploads now remove their newly created evidence directory when
   package storage or extraction raises `OSError` before database persistence.
   The original exception is preserved and cleanup remains best-effort. The

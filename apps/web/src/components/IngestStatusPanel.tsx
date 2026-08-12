@@ -21,7 +21,13 @@ function splitJobMessage(message: string | null | undefined): {
   notes: string[];
 } {
   if (!message) return { summary: null, notes: [] };
-  const [summary, noteText] = message.split(" — ", 2);
+  // Split at the first separator only — notes may embed it themselves, and
+  // `split(sep, 2)` would silently drop everything past the second one.
+  const sep = " — ";
+  const cut = message.indexOf(sep);
+  if (cut === -1) return { summary: message, notes: [] };
+  const summary = message.slice(0, cut);
+  const noteText = message.slice(cut + sep.length);
   if (!noteText) return { summary, notes: [] };
   return {
     summary,

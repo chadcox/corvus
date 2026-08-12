@@ -50,6 +50,8 @@ type MockOptions = {
   timelineTotal?: number;
   onTimelineRequest?: (params: { limit: number; offset: number }) => void;
   adminJobs?: Array<Record<string, unknown>>;
+  sourceStatus?: string;
+  sourceJobs?: Array<Record<string, unknown>>;
 };
 
 async function json(route: Route, body: unknown, status = 200): Promise<void> {
@@ -70,6 +72,8 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     timelineTotal = 1,
     onTimelineRequest,
     adminJobs = [],
+    sourceStatus = baseSource.status,
+    sourceJobs = [],
   } = options;
   let authed = authedInitially;
   let createdCaseName = 'Created Case';
@@ -142,7 +146,12 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     }
 
     if (/^\/api\/v1\/cases\/[^/]+\/evidence$/.test(path) && method === 'GET') {
-      await json(route, [baseSource]);
+      await json(route, [{ ...baseSource, status: sourceStatus }]);
+      return;
+    }
+
+    if (/^\/api\/v1\/cases\/[^/]+\/evidence\/[^/]+\/jobs$/.test(path) && method === 'GET') {
+      await json(route, sourceJobs);
       return;
     }
 
