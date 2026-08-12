@@ -47,6 +47,12 @@ If omitted, hostname is inferred from the folder name and known collector layout
 2. **Raw artifacts** — `.evtx`, registry hives, prefetch, `$MFT` when unparsed
 3. **Collected files only** — filesystem nodes from paths and timestamps
 
+A module CSV only suppresses raw parsing of its category when it actually
+contributes timeline events. A header-only CSV, or one whose rows carry no
+parseable timestamp, is treated as absent: the raw artifacts are parsed and an
+ingest note records the fallback. If several module CSVs match a category, one
+populated CSV is enough to keep the raw parser suppressed.
+
 ## Field workflow
 
 1. Collect endpoint evidence and, when possible, include parser CSV/JSON output.
