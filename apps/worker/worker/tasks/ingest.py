@@ -18,6 +18,7 @@ from worker.db import get_session
 from worker.chainsaw.evaluate import evaluate_chainsaw_hunt
 from worker.chainsaw.hunt import collect_evtx_for_hunt
 from worker.config import settings as worker_settings
+from worker.parsers.csv_events import PARTIAL_PARSE_NOTE_PREFIX, is_partial_parse_note
 from worker.sigma.evaluate import evaluate_sigma_rules
 from worker.sigma.ingest_note import sigma_ingest_note
 from worker.search_index import delete_source_docs, index_source
@@ -27,6 +28,11 @@ from worker.util.pg_sanitize import sanitize_for_postgres, sanitize_text
 logger = logging.getLogger(__name__)
 
 VALIDATION_MODE_FAST = "fast"
+
+# A partial-parse note runs a few hundred characters, and a package can ship
+# arbitrarily many oversized CSVs; cap how many reach the job message so the
+# status panel stays readable. Every note is logged in full regardless.
+MAX_PARTIAL_NOTES_IN_MESSAGE = 3
 
 _TIMELINE_INSERT = text(
     """
@@ -150,6 +156,48 @@ def classify_ingest_failure(exc: Exception, stage: str) -> tuple[str, str]:
     if "opensearch" in msg:
         return "search_index_error", stage
     return "ingest_failed", stage
+
+
+def is_partial_ingest(notes: list[str]) -> bool:
+    """True when any parser reported that it could not read an input in full."""
+    return any(is_partial_parse_note(note) for note in notes)
+
+
+def should_delete_package(delete_after_ingest: bool, notes: list[str]) -> bool:
+    """Post-ingest package deletion is only safe for a complete ingest.
+
+    Deleting the package after a partial parse would destroy the rows that were
+    never read, leaving no way to re-ingest them, so a partial result keeps the
+    evidence on disk even when deletion is enabled.
+    """
+    return delete_after_ingest and not is_partial_ingest(notes)
+
+
+def summarize_partial_notes(
+    notes: list[str], limit: int = MAX_PARTIAL_NOTES_IN_MESSAGE
+) -> list[str]:
+    """Bound how many partial-parse notes reach the job message.
+
+    Note order is preserved; partial notes past the limit collapse into a single
+    count, so a package holding hundreds of oversized CSVs cannot grow the job
+    message without bound. The collapsed note keeps the partial-parse prefix so
+    the result still reads as incomplete.
+    """
+    kept: list[str] = []
+    seen = 0
+    for note in notes:
+        if not is_partial_parse_note(note):
+            kept.append(note)
+            continue
+        seen += 1
+        if seen <= limit:
+            kept.append(note)
+    if seen > limit:
+        kept.append(
+            f"{PARTIAL_PARSE_NOTE_PREFIX} {seen - limit} more file(s) were parsed only in "
+            f"part; see worker logs for the full list"
+        )
+    return kept
 
 
 def _assign_event_ids(events: list[dict]) -> None:
@@ -550,7 +598,12 @@ def process_evidence_package(self, job_id: str, source_id: str) -> dict:
             )
         session.commit()
 
-        if worker_settings.delete_evidence_after_ingest:
+        notes = list(result.get("ingest_notes") or [])
+        sigma_msg = sigma_ingest_note(events, len(all_detections))
+        if sigma_msg:
+            notes.append(sigma_msg)
+
+        if should_delete_package(worker_settings.delete_evidence_after_ingest, notes):
             try:
                 shutil.rmtree(package_dir, ignore_errors=True)
                 logger.info("evidence_deleted_after_ingest source_id=%s path=%s", sid, package_dir)
@@ -560,11 +613,22 @@ def process_evidence_package(self, job_id: str, source_id: str) -> dict:
                     sid,
                     package_dir,
                 )
+        elif worker_settings.delete_evidence_after_ingest:
+            logger.warning(
+                "evidence_retained_partial_ingest source_id=%s path=%s", sid, package_dir
+            )
+            notes.append(
+                "Evidence package kept on disk despite DELETE_EVIDENCE_AFTER_INGEST=true "
+                "because at least one input was parsed only in part"
+            )
 
-        notes = list(result.get("ingest_notes") or [])
-        sigma_msg = sigma_ingest_note(events, len(all_detections))
-        if sigma_msg:
-            notes.append(sigma_msg)
+        for note in notes:
+            if is_partial_parse_note(note):
+                logger.warning(
+                    "ingest_partial_parse source_id=%s job_id=%s note=%s", sid, jid, note
+                )
+        notes = summarize_partial_notes(notes)
+
         note_suffix = f" — {'; '.join(notes)}" if notes else ""
         sigma_note = ""
         _update_job(
