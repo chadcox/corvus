@@ -75,46 +75,133 @@ test('timeline loads additional server pages when scrolled deep into the list', 
 });
 
 test('timeline warns before exporting a CSV the API would truncate', async ({ page }) => {
+  const exportAuthHeaders: Array<string | null> = [];
   await installApiMocks(page, {
-    authedInitially: true,
+    authedInitially: false,
     timelineTotal: 3,
     timelineExportRowLimit: 2,
+    exportTruncated: true,
+    exportRowCount: 2,
+    exportTotalMatches: 3,
+    onExportRequest: ({ authorization }) => { exportAuthHeaders.push(authorization); },
   });
-
-  await gotoApp(page, '/cases/22222222-2222-2222-2222-222222222222');
+  await loginViaUi(page);
+  await gotoApp(page, `/cases/${baseCase.id}`);
   await expect(page.getByText(/Loaded .* of 3 events/)).toBeVisible();
 
-  const exportLink = page.getByRole('link', { name: 'Export CSV' });
-  await expect(exportLink).toHaveAttribute('href', /\/timeline\/export/);
-  await exportLink.click();
+  await page.getByRole('button', { name: 'Export CSV' }).click();
 
   // The click is intercepted, so no download starts until the analyst confirms.
   const dialog = page.getByRole('alertdialog', { name: 'Export will be truncated' });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('capped at 2 rows');
   await expect(dialog).toContainText('2 oldest matching events');
-  await expect(dialog.getByRole('button', { name: 'Export partial CSV' })).toBeVisible();
+  await expect(exportAuthHeaders).toEqual([]);
 
-  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await dialog.getByRole('button', { name: 'Export partial CSV' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page).toHaveURL(/\/cases\/22222222-2222-2222-2222-222222222222$/);
+
+  // The download goes through the authenticated client, and the response
+  // headers — not the pre-download count — describe the outcome.
+  await expect.poll(() => exportAuthHeaders).toEqual(['Bearer smoke-token']);
+  await expect(page.getByTestId('timeline-export-outcome')).toContainText(
+    'Partial export: 2 of 3 matching events'
+  );
 });
 
 test('timeline exports without a warning when the result fits the cap', async ({ page }) => {
+  const exportAuthHeaders: Array<string | null> = [];
+  await installApiMocks(page, {
+    authedInitially: false,
+    timelineTotal: 2,
+    timelineExportRowLimit: 2,
+    exportRowCount: 2,
+    exportTotalMatches: 2,
+    onExportRequest: ({ authorization }) => { exportAuthHeaders.push(authorization); },
+  });
+  await loginViaUi(page);
+  await gotoApp(page, `/cases/${baseCase.id}`);
+  await expect(page.getByText(/Loaded .* of 2 events/)).toBeVisible();
+
+  // At (not above) the cap the export is complete, so the analyst is not
+  // interrupted and the download starts immediately.
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  await expect(page.getByRole('alertdialog', { name: 'Export will be truncated' })).toHaveCount(0);
+  await expect.poll(() => exportAuthHeaders).toEqual(['Bearer smoke-token']);
+  await expect(page.getByTestId('timeline-export-outcome')).toContainText(
+    'Complete export: 2 events'
+  );
+});
+
+test('timeline refuses to promise a complete export while the count is loading', async ({ page }) => {
+  const exportAuthHeaders: Array<string | null> = [];
+  await installApiMocks(page, {
+    authedInitially: true,
+    timelineTotal: 3,
+    timelineExportRowLimit: 2,
+    // Held open for the life of the test: the count never arrives.
+    timelineCountHangs: true,
+    onExportRequest: ({ authorization }) => { exportAuthHeaders.push(authorization); },
+  });
+
+  await gotoApp(page, `/cases/${baseCase.id}`);
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+
+  const dialog = page.getByRole('alertdialog', { name: 'Export completeness unknown' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('still loading');
+  await expect(dialog).toContainText('may be a partial timeline');
+
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(exportAuthHeaders).toEqual([]);
+});
+
+test('timeline flags uncertainty and reports header truth when the count fails', async ({ page }) => {
+  const exportAuthHeaders: Array<string | null> = [];
+  await installApiMocks(page, {
+    authedInitially: false,
+    timelineTotal: 3,
+    timelineExportRowLimit: 2,
+    timelineCountFails: true,
+    exportTruncated: true,
+    exportRowCount: 2,
+    exportTotalMatches: 3,
+    onExportRequest: ({ authorization }) => { exportAuthHeaders.push(authorization); },
+  });
+  await loginViaUi(page);
+  await gotoApp(page, `/cases/${baseCase.id}`);
+  await expect(page.getByRole('button', { name: 'Export CSV' })).toBeEnabled();
+
+  // The first page has 3 rows, which would look under the cap of 2 if page
+  // length were mistaken for the match total.
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  const dialog = page.getByRole('alertdialog', { name: 'Export completeness unknown' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('could not be read from the API');
+
+  await dialog.getByRole('button', { name: 'Export anyway' }).click();
+  await expect.poll(() => exportAuthHeaders).toEqual(['Bearer smoke-token']);
+  await expect(page.getByTestId('timeline-export-outcome')).toContainText(
+    'Partial export: 2 of 3 matching events'
+  );
+});
+
+test('timeline reports an export rejected by the API instead of failing silently', async ({ page }) => {
   await installApiMocks(page, {
     authedInitially: true,
     timelineTotal: 2,
     timelineExportRowLimit: 2,
+    exportStatus: 401,
   });
 
-  await gotoApp(page, '/cases/22222222-2222-2222-2222-222222222222');
+  await gotoApp(page, `/cases/${baseCase.id}`);
   await expect(page.getByText(/Loaded .* of 2 events/)).toBeVisible();
 
-  // At (not above) the cap the export is complete, so the click is not
-  // intercepted and the analyst is not interrupted.
-  await page.getByRole('link', { name: 'Export CSV' }).click();
-  await expect(page.getByRole('alertdialog', { name: 'Export will be truncated' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Export CSV' })).toBeVisible();
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  await expect(page.getByTestId('timeline-export-outcome')).toContainText(
+    'no longer authorized'
+  );
 });
 
 test('danger confirmation is modal, labelled, and restores focus', async ({ page }) => {

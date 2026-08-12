@@ -30,7 +30,11 @@ All notable changes to this project are documented here. Format loosely follows
   the timeline view asks for confirmation before downloading a partial export.
   The CSV bytes are unchanged, so a capped export still contains only evidence
   rows. The cap is configurable with `TIMELINE_EXPORT_MAX_ROWS`, and
-  `timeline/count` additionally reports `export_row_limit`.
+  `timeline/count` additionally reports `export_row_limit`. The timeline view
+  downloads the CSV through the authenticated API client rather than a plain
+  link, so the export works on the token-protected router, reports the response
+  headers as the authoritative truncated/complete outcome, and warns that
+  completeness is unknown when the match count is still loading or unavailable.
 - API archive extraction now rejects uploads whose members claim the same path as
   both a file and a directory, and enforces a fixed ceiling on the number of
   distinct path components an archive may declare. That structural ceiling is

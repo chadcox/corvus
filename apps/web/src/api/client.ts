@@ -291,6 +291,18 @@ export type ProjectContainer = {
   health: string | null;
 };
 
+// Response metadata for a timeline CSV download. Every field except the body
+// is null when the API did not report it, so an older build is never reported
+// as a known-complete export.
+export type TimelineCsvExport = {
+  blob: Blob;
+  filename: string;
+  truncated: boolean | null;
+  rowCount: number | null;
+  totalMatches: number | null;
+  rowLimit: number | null;
+};
+
 export type AuthUser = {
   id: string;
   username: string;
@@ -311,7 +323,10 @@ function parseApiError(body: string, statusText: string): string {
   return body || statusText;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+// Single place where the bearer token, transport failures, and API error
+// bodies are handled, so non-JSON responses (file downloads) authenticate and
+// fail exactly like every JSON call.
+async function authedFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers ?? {});
   const token = getAuthToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -332,8 +347,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (res.status === 401) throw new ApiAuthError(parseApiError(text, res.statusText));
     throw new Error(parseApiError(text, res.statusText));
   }
+  return res;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await authedFetch(path, init);
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
+  const raw = match?.[1]?.trim();
+  if (!raw) return fallback;
+  // The API already sanitizes the hostname, but a response header is still
+  // attacker-influenced input: never let it walk out of the download folder.
+  const sanitized = raw.replace(/^.*[\\/]/, "").replace(/[^A-Za-z0-9._-]/g, "_");
+  return sanitized || fallback;
+}
+
+function numericHeader(res: Response, name: string): number | null {
+  const raw = res.headers.get(name);
+  if (raw == null || raw.trim() === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
 }
 
 export const api = {
@@ -531,7 +569,11 @@ export const api = {
       `/api/v1/cases/${caseId}/sources/${sourceId}/timeline/count${qs ? `?${qs}` : ""}`
     );
   },
-  timelineExportUrl: (
+  // The timeline router requires a bearer token, so the CSV has to be fetched
+  // through the authenticated client rather than navigated to. Fetching also
+  // makes the X-Corvus-Export-* metadata readable, which a plain browser
+  // navigation would discard.
+  downloadTimelineCsv: async (
     caseId: string,
     sourceId: string,
     opts?: {
@@ -545,7 +587,7 @@ export const api = {
       browserOnly?: boolean;
       browserCategory?: string;
     }
-  ) => {
+  ): Promise<TimelineCsvExport> => {
     const params = new URLSearchParams();
     if (opts?.q) params.set("q", opts.q);
     if (opts?.start) params.set("start", opts.start);
@@ -557,7 +599,23 @@ export const api = {
     if (opts?.browserOnly) params.set("browser_only", "true");
     if (opts?.browserCategory) params.set("browser_category", opts.browserCategory);
     const qs = params.toString();
-    return `${API_BASE}/api/v1/cases/${caseId}/sources/${sourceId}/timeline/export${qs ? `?${qs}` : ""}`;
+    const res = await authedFetch(
+      `/api/v1/cases/${caseId}/sources/${sourceId}/timeline/export${qs ? `?${qs}` : ""}`
+    );
+    const truncatedHeader = res.headers.get("X-Corvus-Export-Truncated");
+    return {
+      blob: await res.blob(),
+      filename: filenameFromContentDisposition(
+        res.headers.get("Content-Disposition"),
+        "timeline-export.csv"
+      ),
+      // Null means the response did not say; callers must not read that as
+      // "complete".
+      truncated: truncatedHeader == null ? null : truncatedHeader.toLowerCase() === "true",
+      rowCount: numericHeader(res, "X-Corvus-Export-Row-Count"),
+      totalMatches: numericHeader(res, "X-Corvus-Export-Total-Matches"),
+      rowLimit: numericHeader(res, "X-Corvus-Export-Row-Limit"),
+    };
   },
   listFilesystem: (caseId: string, sourceId: string, parentPath?: string | null) => {
     const params = new URLSearchParams();

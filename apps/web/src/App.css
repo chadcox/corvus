@@ -1736,19 +1736,27 @@ button.stat-card--action.active {
 .export-link {
   display: inline-block;
   padding: 0.4rem 0.75rem;
+  font-family: inherit;
   font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1.4;
   text-decoration: none;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   color: var(--text-soft);
   background: transparent;
+  cursor: pointer;
 }
 
-.export-link:hover {
+.export-link:hover:not(:disabled) {
   border-color: var(--primary-border);
   color: var(--primary-bright);
   text-decoration: none;
+}
+
+.export-link:disabled {
+  cursor: progress;
+  opacity: 0.65;
 }
 
 /* Case summary */

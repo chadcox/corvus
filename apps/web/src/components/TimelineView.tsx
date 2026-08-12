@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { api, Entity, TimelineEvent, TimelineHistogram } from "../api/client";
+import { api, ApiAuthError, Entity, TimelineEvent, TimelineHistogram } from "../api/client";
 import ConfirmDialog from "./ConfirmDialog";
 import { SigmaEventBadges } from "./SigmaFindingsPanel";
 import TimelineChart from "./TimelineChart";
@@ -12,6 +12,10 @@ const PAGE_SIZE = 10000;
 // the timeline count response so a reconfigured server stays in sync.
 const DEFAULT_EXPORT_ROW_LIMIT = 50000;
 type RowDensity = "compact" | "analyst";
+// Whether the match total came from the count endpoint. "unknown" means the
+// count is missing or failed, so completeness of an export cannot be promised.
+type CountState = "loading" | "known" | "unknown";
+type ExportOutcome = { kind: "complete" | "partial" | "unverified" | "error"; message: string };
 const PIVOT_FIELDS = [
   "UserName",
   "TargetUserName",
@@ -111,6 +115,24 @@ function rowPreview(ev: TimelineEvent): {
   };
 }
 
+// A fetched CSV has to be handed to the browser as a blob; a plain link to the
+// API cannot carry the bearer token the timeline router requires.
+function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoke after the click has been dispatched, or the download can be dropped.
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function countText(value: number | null): string {
+  return value == null ? "an unreported number of" : value.toLocaleString();
+}
+
 export default function TimelineView({
   caseId,
   sourceId,
@@ -136,8 +158,12 @@ export default function TimelineView({
   const [loading, setLoading] = useState(true);
   const [loadingPageCount, setLoadingPageCount] = useState(0);
   const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [countState, setCountState] = useState<CountState>("loading");
   const [exportRowLimit, setExportRowLimit] = useState(DEFAULT_EXPORT_ROW_LIMIT);
   const [confirmTruncatedExport, setConfirmTruncatedExport] = useState(false);
+  const [confirmUncertainExport, setConfirmUncertainExport] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportOutcome, setExportOutcome] = useState<ExportOutcome | null>(null);
   const [pagingError, setPagingError] = useState<string | null>(null);
   const [sigmaOnly, setSigmaOnly] = useState(sigmaOnlyProp);
   const [histogram, setHistogram] = useState<TimelineHistogram | null>(null);
@@ -247,12 +273,15 @@ export default function TimelineView({
     setTotalCount(null);
     setLoadingPageCount(0);
     setPagingError(null);
+    // A previous filter's export result says nothing about this one.
+    setExportOutcome(null);
     parentRef.current?.scrollTo({ top: 0 });
     const listReq = api.listTimeline(caseId, sourceId, {
       ...filterOpts,
       limit: PAGE_SIZE,
       offset: 0,
     });
+    setCountState("loading");
     const countReq = api.countTimeline(caseId, sourceId, filterOpts).catch(() => null);
     Promise.all([listReq, countReq])
       .then(([list, counts]) => {
@@ -261,7 +290,10 @@ export default function TimelineView({
         setEventsByIndex(
           Object.fromEntries(list.map((event, index) => [index, event]))
         );
+        // The page length is a usable estimate for virtual scrolling but is not
+        // an authoritative match total; export decisions must not rely on it.
         setTotalCount(counts?.count ?? list.length);
+        setCountState(counts?.count != null ? "known" : "unknown");
         // Older API builds omit the cap; keep the shipped default in that case.
         if (counts?.export_row_limit != null && counts.export_row_limit > 0) {
           setExportRowLimit(counts.export_row_limit);
@@ -276,6 +308,7 @@ export default function TimelineView({
         if (version !== queryVersionRef.current) return;
         setEventsByIndex({});
         setTotalCount(0);
+        setCountState("unknown");
         setPagingError("Failed to load timeline events.");
       })
       .finally(() => {
@@ -380,10 +413,67 @@ export default function TimelineView({
       .catch(() => setLinkedEntities([]));
   }, [caseId, sourceId, selected]);
 
-  const exportUrl = api.timelineExportUrl(caseId, sourceId, filterOpts);
   // The API caps the CSV at exportRowLimit rows, so anything above that count
   // downloads a partial timeline. Warn before the download rather than after.
-  const exportWouldTruncate = totalCount != null && totalCount > exportRowLimit;
+  // The count must be authoritative: a page length is not a match total.
+  const exportWouldTruncate =
+    countState === "known" && totalCount != null && totalCount > exportRowLimit;
+
+  const runExport = useCallback(async () => {
+    setExporting(true);
+    setExportOutcome(null);
+    try {
+      const result = await api.downloadTimelineCsv(caseId, sourceId, filterOpts);
+      saveBlob(result.blob, result.filename);
+      // The response headers are the authoritative outcome — the pre-download
+      // count is only an estimate of what the server will do.
+      if (result.truncated === true) {
+        setExportOutcome({
+          kind: "partial",
+          message: `Partial export: ${countText(result.rowCount)} of ${countText(
+            result.totalMatches
+          )} matching events written to ${result.filename}. The oldest matches by timestamp were kept — narrow the filters for a complete export.`,
+        });
+      } else if (result.truncated === false) {
+        setExportOutcome({
+          kind: "complete",
+          message: `Complete export: ${countText(result.rowCount)} events written to ${
+            result.filename
+          }.`,
+        });
+      } else {
+        setExportOutcome({
+          kind: "unverified",
+          message: `Downloaded ${result.filename}, but the API did not report whether the export was truncated. Treat completeness as unconfirmed.`,
+        });
+      }
+    } catch (err) {
+      setExportOutcome({
+        kind: "error",
+        message:
+          err instanceof ApiAuthError
+            ? "Export failed: this session is no longer authorized. Sign in again and retry."
+            : `Export failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      setExporting(false);
+    }
+  }, [caseId, sourceId, filterOpts]);
+
+  const handleExportClick = () => {
+    if (exporting) return;
+    if (exportWouldTruncate) {
+      setConfirmTruncatedExport(true);
+      return;
+    }
+    // Completeness is unknown while the count is loading or after it failed, so
+    // fail closed and say so instead of implying a complete download.
+    if (countState !== "known") {
+      setConfirmUncertainExport(true);
+      return;
+    }
+    void runExport();
+  };
 
   const hasFilters = Boolean(q || eventType || artifactType || start || end);
   const pivotValues = selected
@@ -450,18 +540,15 @@ export default function TimelineView({
               <option value="compact">Compact rows</option>
               <option value="analyst">Analyst rows</option>
             </select>
-            <a
-              href={exportUrl}
+            <button
+              type="button"
               className="export-link"
-              download
-              onClick={(event) => {
-                if (!exportWouldTruncate) return;
-                event.preventDefault();
-                setConfirmTruncatedExport(true);
-              }}
+              onClick={handleExportClick}
+              disabled={exporting}
+              aria-busy={exporting}
             >
-              Export CSV
-            </a>
+              {exporting ? "Exporting…" : "Export CSV"}
+            </button>
           </div>
         </div>
         {viewDescription && (
@@ -657,6 +744,25 @@ export default function TimelineView({
         {pagingError && (
           <p className="panel-desc" style={{ marginTop: "0.5rem", color: "var(--danger)" }}>{pagingError}</p>
         )}
+        {/* Mounted unconditionally so assistive tech announces the export
+            outcome when it arrives rather than missing a late-added region. */}
+        <p
+          className="panel-desc"
+          data-testid="timeline-export-outcome"
+          role={exportOutcome?.kind === "error" ? "alert" : "status"}
+          aria-live="polite"
+          style={{
+            marginTop: exportOutcome ? "0.5rem" : 0,
+            color:
+              exportOutcome?.kind === "complete"
+                ? "var(--success)"
+                : exportOutcome?.kind === "error"
+                  ? "var(--danger)"
+                  : "var(--warn)",
+          }}
+        >
+          {exportOutcome?.message ?? ""}
+        </p>
       </div>
 
       <div
@@ -810,7 +916,28 @@ export default function TimelineView({
         onCancel={() => setConfirmTruncatedExport(false)}
         onConfirm={() => {
           setConfirmTruncatedExport(false);
-          window.location.href = exportUrl;
+          void runExport();
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirmUncertainExport}
+        title="Export completeness unknown"
+        message={
+          <>
+            {countState === "loading"
+              ? "The number of matching events is still loading, "
+              : "The number of matching events could not be read from the API, "}
+            so Corvus cannot tell whether this export would hit the{" "}
+            <strong>{exportRowLimit.toLocaleString()}</strong>-row cap. The downloaded CSV may be a
+            partial timeline. Wait for the count or reload the timeline for a verified export.
+          </>
+        }
+        confirmLabel="Export anyway"
+        onCancel={() => setConfirmUncertainExport(false)}
+        onConfirm={() => {
+          setConfirmUncertainExport(false);
+          void runExport();
         }}
       />
     </div>
