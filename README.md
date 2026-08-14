@@ -253,7 +253,6 @@ Key environment variables (common defaults in [`.env.example`](.env.example); ad
 | `WORKER_RECONCILE_INSPECT_TIMEOUT_SECONDS` | `5` | Timeout for the Celery ownership probe used by boot reconciliation |
 | `WORKER_RECONCILE_UNCLAIMED_ACTION` | `skip` | Running ingest jobs no worker claims: `skip` leaves them running and logs them; `fail` marks them interrupted, which can fail a live ingest whose worker did not answer the probe |
 | `CSV_EXPORT_FORMULA_ESCAPE` | `true` | Prefix spreadsheet-formula cells in analyst CSV exports |
-| `TIMELINE_EXPORT_MAX_ROWS` | `50000` | Maximum rows in a timeline CSV export; truncation is reported in `X-Corvus-Export-*` headers |
 | `ENABLE_ADMIN_API` | `false` | Expose admin/dev endpoints |
 | `ENABLE_VALIDATION_API` | `false` | Expose automated test endpoints |
 | `AUTH_SECRET_KEY` | `change-me-dev-auth-secret` | JWT signing secret for local auth |

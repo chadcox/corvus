@@ -2,19 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, ApiAuthError, Entity, TimelineEvent, TimelineHistogram } from "../api/client";
-import ConfirmDialog from "./ConfirmDialog";
 import { SigmaEventBadges } from "./SigmaFindingsPanel";
 import TimelineChart from "./TimelineChart";
 import { formatEventTypeLabel } from "../utils/eventCodes";
 
 const PAGE_SIZE = 10000;
-// Mirrors the API default (TIMELINE_EXPORT_MAX_ROWS); the live cap is read from
-// the timeline count response so a reconfigured server stays in sync.
-const DEFAULT_EXPORT_ROW_LIMIT = 50000;
 type RowDensity = "compact" | "analyst";
-// Whether the match total came from the count endpoint. "unknown" means the
-// count is missing or failed, so completeness of an export cannot be promised.
-type CountState = "loading" | "known" | "unknown";
+// The export outcome is only ever derived from the response headers of the
+// download that just finished, never from a pre-download estimate.
 type ExportOutcome = { kind: "complete" | "partial" | "unverified" | "error"; message: string };
 const PIVOT_FIELDS = [
   "UserName",
@@ -129,8 +124,11 @@ function saveBlob(blob: Blob, filename: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-function countText(value: number | null): string {
-  return value == null ? "an unreported number of" : value.toLocaleString();
+// Row counts come from response headers, so an absent header must read as
+// "not reported" rather than as a number the UI made up.
+function rowText(value: number | null): string {
+  if (value == null) return "an unreported number of rows";
+  return `${value.toLocaleString()} ${value === 1 ? "row" : "rows"}`;
 }
 
 export default function TimelineView({
@@ -158,10 +156,6 @@ export default function TimelineView({
   const [loading, setLoading] = useState(true);
   const [loadingPageCount, setLoadingPageCount] = useState(0);
   const [totalCount, setTotalCount] = useState<number | null>(null);
-  const [countState, setCountState] = useState<CountState>("loading");
-  const [exportRowLimit, setExportRowLimit] = useState(DEFAULT_EXPORT_ROW_LIMIT);
-  const [confirmTruncatedExport, setConfirmTruncatedExport] = useState(false);
-  const [confirmUncertainExport, setConfirmUncertainExport] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportOutcome, setExportOutcome] = useState<ExportOutcome | null>(null);
   const [pagingError, setPagingError] = useState<string | null>(null);
@@ -281,23 +275,18 @@ export default function TimelineView({
       limit: PAGE_SIZE,
       offset: 0,
     });
-    setCountState("loading");
-    const countReq = api.countTimeline(caseId, sourceId, filterOpts).catch(() => null);
+    const countReq = api
+      .countTimeline(caseId, sourceId, filterOpts)
+      .then((r) => r.count)
+      .catch(() => null);
     Promise.all([listReq, countReq])
-      .then(([list, counts]) => {
+      .then(([list, count]) => {
         if (version !== queryVersionRef.current) return;
         loadedPagesRef.current.add(0);
         setEventsByIndex(
           Object.fromEntries(list.map((event, index) => [index, event]))
         );
-        // The page length is a usable estimate for virtual scrolling but is not
-        // an authoritative match total; export decisions must not rely on it.
-        setTotalCount(counts?.count ?? list.length);
-        setCountState(counts?.count != null ? "known" : "unknown");
-        // Older API builds omit the cap; keep the shipped default in that case.
-        if (counts?.export_row_limit != null && counts.export_row_limit > 0) {
-          setExportRowLimit(counts.export_row_limit);
-        }
+        setTotalCount(count ?? list.length);
         setPagingError(null);
         if (focusEvent && !q && !eventType && !artifactType && !start && !end) {
           const hit = list.find((e) => e.id === focusEvent.id);
@@ -308,7 +297,6 @@ export default function TimelineView({
         if (version !== queryVersionRef.current) return;
         setEventsByIndex({});
         setTotalCount(0);
-        setCountState("unknown");
         setPagingError("Failed to load timeline events.");
       })
       .finally(() => {
@@ -413,33 +401,33 @@ export default function TimelineView({
       .catch(() => setLinkedEntities([]));
   }, [caseId, sourceId, selected]);
 
-  // The API caps the CSV at exportRowLimit rows, so anything above that count
-  // downloads a partial timeline. Warn before the download rather than after.
-  // The count must be authoritative: a page length is not a match total.
-  const exportWouldTruncate =
-    countState === "known" && totalCount != null && totalCount > exportRowLimit;
-
+  // One click, one download. There is no pre-download prompt: the browser only
+  // learns whether the cap was hit from the response headers, so the honest
+  // outcome is reported after the file is written rather than guessed before.
   const runExport = useCallback(async () => {
     setExporting(true);
     setExportOutcome(null);
     try {
       const result = await api.downloadTimelineCsv(caseId, sourceId, filterOpts);
       saveBlob(result.blob, result.filename);
-      // The response headers are the authoritative outcome — the pre-download
-      // count is only an estimate of what the server will do.
       if (result.truncated === true) {
+        // Only the written row count is known. The number of matches beyond the
+        // cap is deliberately not claimed: the API does not report it, and
+        // inventing a total would misstate the evidence.
         setExportOutcome({
           kind: "partial",
-          message: `Partial export: ${countText(result.rowCount)} of ${countText(
-            result.totalMatches
-          )} matching events written to ${result.filename}. The oldest matches by timestamp were kept — narrow the filters for a complete export.`,
+          message: `Partial export: ${rowText(result.rowCount)} written to ${
+            result.filename
+          } — the oldest matches by timestamp, up to the export cap of ${rowText(
+            result.rowLimit
+          )}. More events match this filter than were written; narrow the time range or filters to export the rest.`,
         });
       } else if (result.truncated === false) {
         setExportOutcome({
           kind: "complete",
-          message: `Complete export: ${countText(result.rowCount)} events written to ${
+          message: `Complete export: ${rowText(result.rowCount)} written to ${
             result.filename
-          }.`,
+          }. Every event matching this filter is in the file.`,
         });
       } else {
         setExportOutcome({
@@ -462,16 +450,6 @@ export default function TimelineView({
 
   const handleExportClick = () => {
     if (exporting) return;
-    if (exportWouldTruncate) {
-      setConfirmTruncatedExport(true);
-      return;
-    }
-    // Completeness is unknown while the count is loading or after it failed, so
-    // fail closed and say so instead of implying a complete download.
-    if (countState !== "known") {
-      setConfirmUncertainExport(true);
-      return;
-    }
     void runExport();
   };
 
@@ -744,12 +722,14 @@ export default function TimelineView({
         {pagingError && (
           <p className="panel-desc" style={{ marginTop: "0.5rem", color: "var(--danger)" }}>{pagingError}</p>
         )}
-        {/* Mounted unconditionally so assistive tech announces the export
-            outcome when it arrives rather than missing a late-added region. */}
+        {/* Mounted unconditionally with a fixed role: a live region added to the
+            DOM at the same time as its text is frequently not announced, and a
+            role that changes between renders re-registers the region and can
+            drop the message. Only the text inside it changes. */}
         <p
           className="panel-desc"
           data-testid="timeline-export-outcome"
-          role={exportOutcome?.kind === "error" ? "alert" : "status"}
+          role="status"
           aria-live="polite"
           style={{
             marginTop: exportOutcome ? "0.5rem" : 0,
@@ -899,47 +879,6 @@ export default function TimelineView({
           </>
         )}
       </div>
-
-      <ConfirmDialog
-        open={confirmTruncatedExport}
-        title="Export will be truncated"
-        message={
-          <>
-            This filter matches <strong>{(totalCount ?? 0).toLocaleString()}</strong> events, but the
-            CSV export is capped at <strong>{exportRowLimit.toLocaleString()}</strong> rows. Only the{" "}
-            <strong>{exportRowLimit.toLocaleString()}</strong> oldest matching events (by timestamp)
-            will be written; later events will be missing from the file. Narrow the time range or
-            filters for a complete export.
-          </>
-        }
-        confirmLabel="Export partial CSV"
-        onCancel={() => setConfirmTruncatedExport(false)}
-        onConfirm={() => {
-          setConfirmTruncatedExport(false);
-          void runExport();
-        }}
-      />
-
-      <ConfirmDialog
-        open={confirmUncertainExport}
-        title="Export completeness unknown"
-        message={
-          <>
-            {countState === "loading"
-              ? "The number of matching events is still loading, "
-              : "The number of matching events could not be read from the API, "}
-            so Corvus cannot tell whether this export would hit the{" "}
-            <strong>{exportRowLimit.toLocaleString()}</strong>-row cap. The downloaded CSV may be a
-            partial timeline. Wait for the count or reload the timeline for a verified export.
-          </>
-        }
-        confirmLabel="Export anyway"
-        onCancel={() => setConfirmUncertainExport(false)}
-        onConfirm={() => {
-          setConfirmUncertainExport(false);
-          void runExport();
-        }}
-      />
     </div>
   );
 }

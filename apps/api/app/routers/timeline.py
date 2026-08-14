@@ -25,18 +25,6 @@ EXPORT_MAX = 50_000
 EXPORT_TRUNCATED_HEADER = "X-Corvus-Export-Truncated"
 EXPORT_ROW_LIMIT_HEADER = "X-Corvus-Export-Row-Limit"
 EXPORT_ROW_COUNT_HEADER = "X-Corvus-Export-Row-Count"
-EXPORT_TOTAL_MATCHES_HEADER = "X-Corvus-Export-Total-Matches"
-
-
-def export_row_limit() -> int:
-    """Resolve the configured export row cap.
-
-    A non-positive setting would silently produce an empty or unbounded export,
-    so fall back to the documented default instead.
-    """
-    configured = settings.timeline_export_max_rows
-    return configured if configured > 0 else EXPORT_MAX
-
 
 BROWSER_CATEGORY_TYPES: dict[str, list[str]] = {
     "visits": ["browser.visit"],
@@ -201,11 +189,7 @@ def count_timeline_events(
     browser_category: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> dict[str, int]:
-    """Return the filtered total count (no rows materialized).
-
-    ``export_row_limit`` is reported alongside so callers can tell, before
-    starting a download, whether the CSV export would be truncated.
-    """
+    """Return the filtered total count (no rows materialized)."""
     _get_source(db, case_id, source_id)
     query = _filtered_timeline_query(
         db,
@@ -221,7 +205,7 @@ def count_timeline_events(
         browser_category=browser_category,
     )
     count = query.order_by(None).with_entities(func.count()).scalar() or 0
-    return {"count": count, "export_row_limit": export_row_limit()}
+    return {"count": count}
 
 
 @router.get("/export")
@@ -241,39 +225,58 @@ def export_timeline_csv(
 ) -> StreamingResponse:
     """Download filtered timeline events as CSV for reporting.
 
-    The export is capped at ``TIMELINE_EXPORT_MAX_ROWS`` rows. Truncation is
-    reported in additive ``X-Corvus-Export-*`` response headers rather than in
-    the CSV body, so a partial export is never mistaken for a complete one.
+    The export is capped at ``EXPORT_MAX`` rows. Truncation is reported in
+    additive ``X-Corvus-Export-*`` response headers rather than in the CSV body,
+    so a partial export is never mistaken for a complete one and no
+    non-evidence row is introduced into the analyst's spreadsheet.
     """
     source = _get_source(db, case_id, source_id)
-    filtered = _filtered_timeline_query(
-        db,
-        source_id,
-        start=start,
-        end=end,
-        event_type=event_type,
-        artifact_type=artifact_type,
-        q=q,
-        sigma_only=sigma_only,
-        mft_only=mft_only,
-        browser_only=browser_only,
-        browser_category=browser_category,
+
+    # One query, materialized before the response exists.
+    #
+    # Response headers are frozen the moment StreamingResponse is constructed,
+    # while the body is produced later by the generator. Anything derived from a
+    # second query (a COUNT, a probe) can disagree with the bytes that actually
+    # ship if rows are inserted or deleted in between, which would let a header
+    # claim "complete" over a partial file. So the row list below is the single
+    # source of truth for the truncated flag, the row count header, and the CSV
+    # body alike; they cannot drift because they are the same list.
+    #
+    # Fetching EXPORT_MAX + 1 rows detects "there is at least one more match"
+    # without a COUNT over the whole filter. Buffering is bounded by
+    # construction: at most 50,001 five-column tuples of scalar values (no ORM
+    # identity map entries, since with_entities selects columns), which is a few
+    # tens of MB worst case and the same order as the streamed body itself.
+    rows = (
+        _filtered_timeline_query(
+            db,
+            source_id,
+            start=start,
+            end=end,
+            event_type=event_type,
+            artifact_type=artifact_type,
+            q=q,
+            sigma_only=sigma_only,
+            mft_only=mft_only,
+            browser_only=browser_only,
+            browser_category=browser_category,
+        )
+        .with_entities(
+            TimelineEvent.timestamp_utc,
+            TimelineEvent.event_type,
+            TimelineEvent.summary,
+            TimelineEvent.artifact_type,
+            TimelineEvent.original_source,
+        )
+        .limit(EXPORT_MAX + 1)
+        .all()
     )
 
-    # Headers must be settled before the body streams, so the match total comes
-    # from a count query rather than from tallying yielded rows.
-    row_limit = export_row_limit()
-    total_matches = filtered.order_by(None).with_entities(func.count()).scalar() or 0
-    row_count = min(total_matches, row_limit)
-    truncated = total_matches > row_limit
-
-    query = filtered.with_entities(
-        TimelineEvent.timestamp_utc,
-        TimelineEvent.event_type,
-        TimelineEvent.summary,
-        TimelineEvent.artifact_type,
-        TimelineEvent.original_source,
-    ).limit(row_limit)
+    truncated = len(rows) > EXPORT_MAX
+    # The sentinel row is only evidence that more matches exist; it is never
+    # written, so the header count and the body length stay equal.
+    export_rows = rows[:EXPORT_MAX]
+    row_count = len(export_rows)
 
     escape = settings.csv_export_formula_escape
 
@@ -284,7 +287,7 @@ def export_timeline_csv(
             ["timestamp_utc", "event_type", "summary", "artifact_type", "original_source"]
         )
         yield buffer.getvalue()
-        for ev in query.yield_per(2000):
+        for ev in export_rows:
             buffer.seek(0)
             buffer.truncate(0)
             writer.writerow(
@@ -306,18 +309,18 @@ def export_timeline_csv(
     headers = {
         "Content-Disposition": f'attachment; filename="{filename}"',
         EXPORT_TRUNCATED_HEADER: "true" if truncated else "false",
-        EXPORT_ROW_LIMIT_HEADER: str(row_limit),
+        EXPORT_ROW_LIMIT_HEADER: str(EXPORT_MAX),
         EXPORT_ROW_COUNT_HEADER: str(row_count),
-        EXPORT_TOTAL_MATCHES_HEADER: str(total_matches),
         # The web app is served from a different origin, so these headers are
         # unreadable by browser callers unless CORS exposes them explicitly.
+        # This is set per-route because the global CORSMiddleware is configured
+        # without expose_headers; adding one there would override this value.
         "Access-Control-Expose-Headers": ", ".join(
             [
                 "Content-Disposition",
                 EXPORT_TRUNCATED_HEADER,
                 EXPORT_ROW_LIMIT_HEADER,
                 EXPORT_ROW_COUNT_HEADER,
-                EXPORT_TOTAL_MATCHES_HEADER,
             ]
         ),
     }

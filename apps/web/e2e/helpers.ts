@@ -48,16 +48,13 @@ type MockOptions = {
   onHashCompute?: () => void;
   onYaraScan?: () => void;
   timelineTotal?: number;
-  timelineExportRowLimit?: number;
   onTimelineRequest?: (params: { limit: number; offset: number }) => void;
-  /** Never answer the count request, pinning the timeline in its loading state. */
-  timelineCountHangs?: boolean;
-  /** Fail the count request so the match total is unavailable. */
-  timelineCountFails?: boolean;
   exportStatus?: number;
   exportTruncated?: boolean;
   exportRowCount?: number;
-  exportTotalMatches?: number;
+  exportRowLimit?: number;
+  /** Answer the export without X-Corvus-Export-* headers, as an older API would. */
+  exportOmitMetadata?: boolean;
   onExportRequest?: (params: { authorization: string | null }) => void;
   adminJobs?: Array<Record<string, unknown>>;
   sourceStatus?: string;
@@ -80,14 +77,12 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     onHashCompute,
     onYaraScan,
     timelineTotal = 1,
-    timelineExportRowLimit = 50000,
     onTimelineRequest,
-    timelineCountHangs = false,
-    timelineCountFails = false,
     exportStatus = 200,
     exportTruncated = false,
     exportRowCount,
-    exportTotalMatches,
+    exportRowLimit = 50000,
+    exportOmitMetadata = false,
     onExportRequest,
     adminJobs = [],
     sourceStatus = baseSource.status,
@@ -233,16 +228,7 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     }
 
     if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/timeline\/count/.test(path) && method === 'GET') {
-      if (timelineCountHangs) {
-        // Left pending; Playwright discards the route when the page closes.
-        await new Promise(() => {});
-        return;
-      }
-      if (timelineCountFails) {
-        await json(route, { detail: 'Count failed' }, 500);
-        return;
-      }
-      await json(route, { count: timelineTotal, export_row_limit: timelineExportRowLimit });
+      await json(route, { count: timelineTotal });
       return;
     }
 
@@ -253,8 +239,7 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
         await json(route, { detail: 'Not authenticated' }, exportStatus);
         return;
       }
-      const rowCount = exportRowCount ?? Math.min(timelineTotal, timelineExportRowLimit);
-      const totalMatches = exportTotalMatches ?? timelineTotal;
+      const rowCount = exportRowCount ?? Math.min(timelineTotal, exportRowLimit);
       const rows = Array.from(
         { length: rowCount },
         (_, index) => `2026-01-01T00:00:0${index % 10}Z,logon,User logon ${index + 1},mft,security.evtx`
@@ -264,10 +249,15 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
         headers: {
           'content-type': 'text/csv; charset=utf-8',
           'content-disposition': 'attachment; filename="timeline-WKS-042.csv"',
-          'x-corvus-export-truncated': exportTruncated ? 'true' : 'false',
-          'x-corvus-export-row-limit': String(timelineExportRowLimit),
-          'x-corvus-export-row-count': String(rowCount),
-          'x-corvus-export-total-matches': String(totalMatches),
+          // An older API omits the disclosure headers entirely; the UI must then
+          // report completeness as unverified rather than assume success.
+          ...(exportOmitMetadata
+            ? {}
+            : {
+                'x-corvus-export-truncated': exportTruncated ? 'true' : 'false',
+                'x-corvus-export-row-limit': String(exportRowLimit),
+                'x-corvus-export-row-count': String(rowCount),
+              }),
         },
         body: ['timestamp_utc,event_type,summary,artifact_type,original_source', ...rows].join('\n'),
       });

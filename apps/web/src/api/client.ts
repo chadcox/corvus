@@ -299,7 +299,6 @@ export type TimelineCsvExport = {
   filename: string;
   truncated: boolean | null;
   rowCount: number | null;
-  totalMatches: number | null;
   rowLimit: number | null;
 };
 
@@ -565,7 +564,7 @@ export const api = {
     if (opts?.browserOnly) params.set("browser_only", "true");
     if (opts?.browserCategory) params.set("browser_category", opts.browserCategory);
     const qs = params.toString();
-    return request<{ count: number; export_row_limit?: number }>(
+    return request<{ count: number }>(
       `/api/v1/cases/${caseId}/sources/${sourceId}/timeline/count${qs ? `?${qs}` : ""}`
     );
   },
@@ -613,7 +612,6 @@ export const api = {
       // "complete".
       truncated: truncatedHeader == null ? null : truncatedHeader.toLowerCase() === "true",
       rowCount: numericHeader(res, "X-Corvus-Export-Row-Count"),
-      totalMatches: numericHeader(res, "X-Corvus-Export-Total-Matches"),
       rowLimit: numericHeader(res, "X-Corvus-Export-Row-Limit"),
     };
   },

@@ -23,18 +23,21 @@ All notable changes to this project are documented here. Format loosely follows
   (default `true`).
 
 ### Changed
-- Timeline CSV export truncation is no longer silent. Exports are still capped at
-  50,000 rows by default, but the response now carries
-  `X-Corvus-Export-Truncated`, `X-Corvus-Export-Row-Limit`,
-  `X-Corvus-Export-Row-Count`, and `X-Corvus-Export-Total-Matches` headers, and
-  the timeline view asks for confirmation before downloading a partial export.
-  The CSV bytes are unchanged, so a capped export still contains only evidence
-  rows. The cap is configurable with `TIMELINE_EXPORT_MAX_ROWS`, and
-  `timeline/count` additionally reports `export_row_limit`. The timeline view
-  downloads the CSV through the authenticated API client rather than a plain
-  link, so the export works on the token-protected router, reports the response
-  headers as the authoritative truncated/complete outcome, and warns that
-  completeness is unknown when the match count is still loading or unavailable.
+- Timeline CSV export truncation is no longer silent. The cap stays a fixed
+  50,000 rows with no new configuration, but the response now carries
+  `X-Corvus-Export-Truncated`, `X-Corvus-Export-Row-Limit`, and
+  `X-Corvus-Export-Row-Count` headers, exposed to browser callers via
+  `Access-Control-Expose-Headers` on the route. The three values and the CSV body
+  are all derived from a single row list materialized before the response is
+  constructed, so a header can never disagree with the bytes that shipped. The
+  CSV itself is byte-identical to before: truncation is disclosed in headers
+  only, never as a warning row that downstream tooling would read as evidence.
+  The timeline view now downloads the CSV through the authenticated API client
+  and saves a blob rather than following a plain link, which is what makes the
+  export work at all on the token-protected router, and reports the outcome after
+  the download in a status live region — complete, partial (with the exact number
+  of rows written, oldest by timestamp), unverified when the API reported no
+  headers, or the failure reason. `timeline/count` is unchanged.
 - API archive extraction now rejects uploads whose members claim the same path as
   both a file and a directory, and enforces a fixed ceiling on the number of
   distinct path components an archive may declare. That structural ceiling is
