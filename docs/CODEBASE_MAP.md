@@ -199,7 +199,7 @@ CaseDetailPage  (owns cross-view pivot state: focusTimeline / focusPath / focusE
     (* shown only when stats.mft_count / browser_count > 0)
 ```
 
-**TimelineView**: virtualized, sparse page cache (`PAGE_SIZE=10000`), scrollbar-thumb bottom-jump special case, sqrt-scaled SVG histogram (`TimelineChart`). **MftView**: separate table, server pages of 500, client-side sort/search within loaded page only, timestomping flag when `$STANDARD_INFO < $FILE_NAME`. **DiskView**: tree browse + hex preview (512-byte windows). **BrowserView**: category tabs, load-more paging (200).
+**TimelineView**: virtualized, sparse page cache (`PAGE_SIZE=10000`), scrollbar-thumb bottom-jump special case, sqrt-scaled SVG histogram (`TimelineChart`). **MftView**: separate table, server pages of 500, server-side path search across the whole source (`q` + `mft_only`, 300ms debounce, page reset, count from `timeline/count` with the same filters), client-side sort within the loaded page only, timestomping flag when `$STANDARD_INFO < $FILE_NAME`. **DiskView**: tree browse + hex preview (512-byte windows). **BrowserView**: category tabs, load-more paging (200).
 
 **Polling intervals**: ingest/hash/yara jobs 2s; system status + admin overview 15s; GlobalSearch debounce 300ms; `/` keyboard shortcut focuses search.
 
@@ -264,7 +264,7 @@ Ingest priority tiers (docs/EVIDENCE-PACKAGE.md, confirmed in code): (1) pre-gen
 - **Worker boot reconcile**: the Celery `active`/`reserved`/`scheduled` inspect probe is presence-only, so an unclaimed job is not proof of an orphan. Default `WORKER_RECONCILE_UNCLAIMED_ACTION=skip` logs unclaimed jobs and leaves them `running`; opt-in `fail` marks them `error_code='interrupted'` but can falsely fail a live ingest whose worker did not answer the probe.
 - **web dead code**: `SigmaRulesSync.tsx` is unused (superseded by ControlPanelPage rules ops). `TimelineView` duplicates `ResizableSplit` logic inline.
 - **`utils/generated/` files** claim "re-generate from source" but no generator script exists in-repo — effectively vendored static data.
-- **MftView search** only searches the currently loaded 500-row server page.
+- **MFT `q` searches summary plus the reconstructed path** (`data->>'ParentPath'` + `data->>'FileName'`), with both the stored path and the typed term normalized to `/` so either separator matches. **MftView column sort still orders only the loaded 500-row page** — the UI labels it as such.
 - **`yara_rules.py`** hardcodes `/usr/local/bin/fetch-yara-rules.sh` (sigma/chainsaw resolve paths dynamically).
 - **Plaso timeout is per family invocation** (1800s each) when parallel families enabled.
 - **Velociraptor is import-only** (AGPL-3.0 — never bundled); Plaso/mac_apt/Volatility3 are opt-in image build args (`INSTALL_OPEN_FORENSICS`, `INSTALL_VOLATILITY3`, default false).
