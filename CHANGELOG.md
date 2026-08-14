@@ -34,6 +34,18 @@ All notable changes to this project are documented here. Format loosely follows
 - `.env.example` no longer ships a working default admin password.
 
 ### Fixed
+- MFT path search now covers every record in the source instead of the 500-row
+  page loaded in the browser. The timeline `q` filter, when combined with
+  `mft_only`, also matches the record's reconstructed path
+  (`ParentPath` + `FileName`) alongside the summary, and normalizes both the
+  stored path and the typed term to `/` so `Windows\System32` and
+  `Windows/System32` find the same rows. Wildcards in the term stay literal
+  (`%` and `_` are escaped as before) and non-MFT queries are unchanged. The MFT
+  view debounces the term, resets to the first page, and takes both its record
+  count and its page count from the same filtered query, so paging reflects the
+  real number of matches; when that count is unavailable the view says so rather
+  than showing a stale total. Column sort is still client-side over the loaded
+  page and is now labelled that way.
 - Oversized CSV input no longer produces a silently truncated timeline. The
   generic CSV parser has always stopped after a fixed row ceiling; it now reads
   one sentinel row past that ceiling to tell "the file ended here" from "there

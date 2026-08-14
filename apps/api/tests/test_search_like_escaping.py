@@ -159,6 +159,57 @@ def test_timeline_browser_filter_escapes_all_json_fields():
     assert "browser.%" in params.values()
 
 
+def _mft_query(q: str | None):
+    return _filtered_timeline_query(
+        Session(),
+        uuid.uuid4(),
+        start=None,
+        end=None,
+        event_type=None,
+        artifact_type=None,
+        q=q,
+        mft_only=True,
+    )
+
+
+def test_timeline_mft_filter_searches_full_path_and_summary():
+    sql, params = _compile(_mft_query("System32/cmd.exe").statement)
+    # Summary keeps its own predicate; the path predicate spans ParentPath + FileName.
+    assert r"%System32/cmd.exe%" in params.values()
+    assert "ParentPath" in params.values()
+    assert "FileName" in params.values()
+    assert sql.count("ILIKE") >= 2
+    assert "concat" in sql.lower() and "coalesce" in sql.lower()
+
+
+def test_timeline_mft_filter_normalizes_separators():
+    """A backslash-typed path matches rows stored with either separator."""
+    _sql, params = _compile(_mft_query(r"System32\cmd.exe").statement)
+    patterns = [v for v in params.values() if isinstance(v, str) and v.startswith("%")]
+    # Path pattern is normalized to "/"; both sides of the comparison are.
+    assert r"%System32/cmd.exe%" in patterns
+    assert "\\" in params.values() and "/" in params.values()
+
+
+def test_timeline_mft_filter_escapes_path_wildcards():
+    sql, params = _compile(_mft_query("a_b%").statement)
+    assert [v for v in params.values() if v == r"%a\_b\%%"], params
+    assert "ESCAPE" in sql
+
+
+def test_timeline_mft_filter_absent_without_query():
+    """mft_only alone keeps the existing scope-only predicate."""
+    sql, params = _compile(_mft_query(None).statement)
+    assert "ParentPath" not in params.values()
+    # Only the static MFT scope wildcards remain.
+    assert {v for v in params.values() if isinstance(v, str) and "%" in v} == {
+        "%mft%",
+        "%/mft/%",
+        "%.mft%",
+    }
+    assert "concat" not in sql.lower()
+
+
 def test_global_search_escapes_wildcards():
     db, response = _call("search", {"q": "ntuser_dat"})
     assert response.status_code == 200, response.text

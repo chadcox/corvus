@@ -48,7 +48,14 @@ type MockOptions = {
   onHashCompute?: () => void;
   onYaraScan?: () => void;
   timelineTotal?: number;
-  onTimelineRequest?: (params: { limit: number; offset: number }) => void;
+  /** Count/rows returned when the request carries a `q` search term. */
+  timelineFilteredTotal?: number;
+  onTimelineRequest?: (params: {
+    limit: number;
+    offset: number;
+    q: string | null;
+    mftOnly: boolean;
+  }) => void;
   adminJobs?: Array<Record<string, unknown>>;
   sourceStatus?: string;
   sourceJobs?: Array<Record<string, unknown>>;
@@ -70,6 +77,7 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     onHashCompute,
     onYaraScan,
     timelineTotal = 1,
+    timelineFilteredTotal = timelineTotal,
     onTimelineRequest,
     adminJobs = [],
     sourceStatus = baseSource.status,
@@ -215,7 +223,8 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     }
 
     if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/timeline\/count/.test(path) && method === 'GET') {
-      await json(route, { count: timelineTotal });
+      const searched = url.searchParams.get('q');
+      await json(route, { count: searched ? timelineFilteredTotal : timelineTotal });
       return;
     }
 
@@ -227,8 +236,15 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/timeline/.test(path) && method === 'GET') {
       const limit = Number(url.searchParams.get('limit') || '200');
       const offset = Number(url.searchParams.get('offset') || '0');
-      onTimelineRequest?.({ limit, offset });
-      const pageLength = Math.max(0, Math.min(limit, timelineTotal - offset));
+      const searched = url.searchParams.get('q');
+      onTimelineRequest?.({
+        limit,
+        offset,
+        q: searched,
+        mftOnly: url.searchParams.get('mft_only') === 'true',
+      });
+      const matching = searched ? timelineFilteredTotal : timelineTotal;
+      const pageLength = Math.max(0, Math.min(limit, matching - offset));
       await json(route, Array.from({ length: pageLength }, (_, index) => {
         const rowNumber = offset + index + 1;
         const suffix = String(rowNumber).padStart(12, '0');
