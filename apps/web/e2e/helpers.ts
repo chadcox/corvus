@@ -59,7 +59,45 @@ type MockOptions = {
   adminJobs?: Array<Record<string, unknown>>;
   sourceStatus?: string;
   sourceJobs?: Array<Record<string, unknown>>;
+  /** Entities in the source when no filter is applied. */
+  entityTotal?: number;
+  /** Entities returned once a type/name filter is applied. */
+  entityFilteredTotal?: number;
+  /** Make the entity total unavailable while list pages still succeed. */
+  entityCountFails?: boolean;
+  /** Timeline events linked to the selected entity. */
+  entityEventTotal?: number;
+  /** Make the related-event total unavailable while list pages still succeed. */
+  entityEventCountFails?: boolean;
+  /** Related-event offsets that fail once before succeeding. */
+  entityEventFailOffsets?: number[];
+  /** Entity offsets to fail; repeat an offset to fail it more than once. */
+  entityFailOffsets?: number[];
+  onEntitiesRequest?: (params: {
+    limit: number;
+    offset: number;
+    q: string | null;
+    entityType: string | null;
+  }) => void;
 };
+
+const canonicalEntity = {
+  id: '88888888-8888-8888-8888-888888888888',
+  evidence_source_id: baseSource.id,
+  entity_type: 'user',
+  display_name: 'analyst1',
+  attributes: { sid: 'S-1-5-21-test' },
+};
+
+/** Row 1 is the canonical entity referenced by the timeline mock's entity_refs. */
+function entityRow(rowNumber: number): Record<string, unknown> {
+  if (rowNumber === 1) return canonicalEntity;
+  return {
+    ...canonicalEntity,
+    id: `88888888-8888-8888-8888-${String(rowNumber).padStart(12, '0')}`,
+    display_name: `analyst${rowNumber}`,
+  };
+}
 
 async function json(route: Route, body: unknown, status = 200): Promise<void> {
   await route.fulfill({
@@ -82,9 +120,25 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     adminJobs = [],
     sourceStatus = baseSource.status,
     sourceJobs = [],
+    entityTotal = 1,
+    entityFilteredTotal = entityTotal,
+    entityCountFails = false,
+    entityEventTotal = 1,
+    entityEventCountFails = false,
+    entityEventFailOffsets = [],
+    entityFailOffsets = [],
+    onEntitiesRequest,
   } = options;
   let authed = authedInitially;
   let createdCaseName = 'Created Case';
+  const pendingEntityFailures = new Map<number, number>();
+  for (const offset of entityFailOffsets) {
+    pendingEntityFailures.set(offset, (pendingEntityFailures.get(offset) ?? 0) + 1);
+  }
+  const pendingEntityEventFailures = new Map<number, number>();
+  for (const offset of entityEventFailOffsets) {
+    pendingEntityEventFailures.set(offset, (pendingEntityEventFailures.get(offset) ?? 0) + 1);
+  }
 
   await page.route('**/api/v1/**', async (route) => {
     const req = route.request();
@@ -264,16 +318,76 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
       return;
     }
 
-    if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/entities/.test(path) && method === 'GET') {
-      await json(route, [
-        {
-          id: '88888888-8888-8888-8888-888888888888',
+    if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/entities\/[^/]+\/timeline\/count$/.test(path) && method === 'GET') {
+      if (entityEventCountFails) {
+        await json(route, { detail: 'Related-event count unavailable' }, 500);
+        return;
+      }
+      await json(route, { count: entityEventTotal });
+      return;
+    }
+
+    if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/entities\/[^/]+\/timeline$/.test(path) && method === 'GET') {
+      const limit = Number(url.searchParams.get('limit') || '100');
+      const offset = Number(url.searchParams.get('offset') || '0');
+      const remainingFailures = pendingEntityEventFailures.get(offset) ?? 0;
+      if (remainingFailures > 0) {
+        pendingEntityEventFailures.set(offset, remainingFailures - 1);
+        await json(route, { detail: 'Related-event page unavailable' }, 500);
+        return;
+      }
+      const pageLength = Math.max(0, Math.min(limit, entityEventTotal - offset));
+      await json(route, Array.from({ length: pageLength }, (_, index) => {
+        const rowNumber = offset + index + 1;
+        return {
+          id: `77777777-7777-7777-7777-${String(rowNumber).padStart(12, '0')}`,
           evidence_source_id: baseSource.id,
-          entity_type: 'user',
-          display_name: 'analyst1',
-          attributes: { sid: 'S-1-5-21-test' },
-        },
-      ]);
+          timestamp_utc: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+          event_type: 'logon',
+          summary: `Linked event ${rowNumber}`,
+          artifact_type: 'evtx',
+          original_source: 'security.evtx',
+          data: {},
+          entity_refs: ['88888888-8888-8888-8888-888888888888'],
+          sigma_hits: [],
+        };
+      }));
+      return;
+    }
+
+    if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/entities\/count$/.test(path) && method === 'GET') {
+      if (entityCountFails) {
+        await json(route, { detail: 'Entity count unavailable' }, 500);
+        return;
+      }
+      const filtered = url.searchParams.get('q') || url.searchParams.get('entity_type');
+      await json(route, { count: filtered ? entityFilteredTotal : entityTotal });
+      return;
+    }
+
+    if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/entities$/.test(path) && method === 'GET') {
+      const ids = url.searchParams.getAll('ids');
+      if (ids.length > 0) {
+        await json(route, [canonicalEntity]);
+        return;
+      }
+      const limit = Number(url.searchParams.get('limit') || '200');
+      const offset = Number(url.searchParams.get('offset') || '0');
+      const searched = url.searchParams.get('q');
+      const entityType = url.searchParams.get('entity_type');
+      onEntitiesRequest?.({ limit, offset, q: searched, entityType });
+      const remainingFailures = pendingEntityFailures.get(offset) ?? 0;
+      if (remainingFailures > 0) {
+        pendingEntityFailures.set(offset, remainingFailures - 1);
+        await json(route, { detail: 'Entity page unavailable' }, 500);
+        return;
+      }
+      const matching = searched || entityType ? entityFilteredTotal : entityTotal;
+      const pageLength = Math.max(0, Math.min(limit, matching - offset));
+      await json(
+        route,
+        Array.from({ length: pageLength }, (_, index) => entityRow(offset + index + 1))
+      );
       return;
     }
 

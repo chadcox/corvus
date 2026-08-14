@@ -44,6 +44,9 @@ class RecordingQuery:
     def limit(self, *_args, **_kwargs):
         return self
 
+    def offset(self, *_args, **_kwargs):
+        return self
+
     def first(self):
         return self.rows[0] if self.rows else None
 
