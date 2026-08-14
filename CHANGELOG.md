@@ -34,6 +34,20 @@ All notable changes to this project are documented here. Format loosely follows
 - `.env.example` no longer ships a working default admin password.
 
 ### Fixed
+- The Objects view no longer stops at the first 200 entities (or 100 related
+  timeline events) while presenting the truncated list as the complete set.
+  `GET .../entities` and `GET .../entities/{id}/timeline` accept `offset`
+  alongside `limit`, and new `.../entities/count` and
+  `.../entities/{id}/timeline/count` endpoints return the exact total for the
+  same filters. Both listings order deterministically — entities by
+  `entity_type`, `display_name`, `id`, events by `timestamp_utc`, `id` — so
+  duplicate display names and shared timestamps cannot repeat or skip a row at a
+  page boundary. Existing callers are unaffected: the list responses are still
+  plain arrays with the same default limits. The view loads one bounded page at
+  a time on request, states how many of the filtered total are loaded (and says
+  so when the total is unavailable), offers a filter reset, discards responses
+  from superseded filters, and on a failed page keeps the rows already loaded
+  and offers a retry instead of blanking the panel.
 - MFT path search now covers every record in the source instead of the 500-row
   page loaded in the browser. The timeline `q` filter, when combined with
   `mft_only`, also matches the record's reconstructed path

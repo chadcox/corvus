@@ -336,6 +336,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Filters shared by the entity list and its count, so both stay in step. */
+function entityFilterParams(opts?: {
+  entityType?: string;
+  q?: string;
+  ids?: string[];
+}): URLSearchParams {
+  const params = new URLSearchParams();
+  if (opts?.entityType) params.set("entity_type", opts.entityType);
+  if (opts?.q) params.set("q", opts.q);
+  opts?.ids?.forEach((id) => params.append("ids", id));
+  return params;
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<{ access_token: string; token_type: string; user: AuthUser }>("/api/v1/auth/login", {
@@ -596,20 +609,43 @@ export const api = {
   listEntities: (
     caseId: string,
     sourceId: string,
-    opts?: { entityType?: string; q?: string; ids?: string[] }
+    opts?: { entityType?: string; q?: string; ids?: string[]; limit?: number; offset?: number }
   ) => {
-    const params = new URLSearchParams();
-    if (opts?.entityType) params.set("entity_type", opts.entityType);
-    if (opts?.q) params.set("q", opts.q);
-    opts?.ids?.forEach((id) => params.append("ids", id));
+    const params = entityFilterParams(opts);
+    if (opts?.limit != null) params.set("limit", String(opts.limit));
+    if (opts?.offset != null) params.set("offset", String(opts.offset));
     const qs = params.toString();
     return request<Entity[]>(
       `/api/v1/cases/${caseId}/sources/${sourceId}/entities${qs ? `?${qs}` : ""}`
     );
   },
-  listEntityTimeline: (caseId: string, sourceId: string, entityId: string) =>
-    request<TimelineEvent[]>(
-      `/api/v1/cases/${caseId}/sources/${sourceId}/entities/${entityId}/timeline`
+  countEntities: (
+    caseId: string,
+    sourceId: string,
+    opts?: { entityType?: string; q?: string; ids?: string[] }
+  ) => {
+    const qs = entityFilterParams(opts).toString();
+    return request<{ count: number }>(
+      `/api/v1/cases/${caseId}/sources/${sourceId}/entities/count${qs ? `?${qs}` : ""}`
+    );
+  },
+  listEntityTimeline: (
+    caseId: string,
+    sourceId: string,
+    entityId: string,
+    opts?: { limit?: number; offset?: number }
+  ) => {
+    const params = new URLSearchParams();
+    if (opts?.limit != null) params.set("limit", String(opts.limit));
+    if (opts?.offset != null) params.set("offset", String(opts.offset));
+    const qs = params.toString();
+    return request<TimelineEvent[]>(
+      `/api/v1/cases/${caseId}/sources/${sourceId}/entities/${entityId}/timeline${qs ? `?${qs}` : ""}`
+    );
+  },
+  countEntityTimeline: (caseId: string, sourceId: string, entityId: string) =>
+    request<{ count: number }>(
+      `/api/v1/cases/${caseId}/sources/${sourceId}/entities/${entityId}/timeline/count`
     ),
   globalSearch: (caseId: string, sourceId: string, q: string, limit = 25) =>
     request<GlobalSearchResult>(

@@ -74,6 +74,187 @@ test('timeline loads additional server pages when scrolled deep into the list', 
   await expect.poll(() => requestedOffsets).toContain(expectedLastPageOffset);
 });
 
+test('entity catalog pages past the first 200 and discloses the filtered total', async ({ page }) => {
+  const requests: Array<{ offset: number; q: string | null; entityType: string | null }> = [];
+  await installApiMocks(page, {
+    authedInitially: true,
+    entityTotal: 450,
+    entityFilteredTotal: 30,
+    entityEventTotal: 250,
+    onEntitiesRequest: ({ offset, q, entityType }) => { requests.push({ offset, q, entityType }); },
+  });
+
+  await gotoApp(page, `/cases/${baseCase.id}`);
+  await page.getByRole('button', { name: 'Entities', exact: true }).click();
+
+  const loadState = page.locator('.entity-load-state');
+  await expect(loadState).toHaveText('200 of 450 entities loaded');
+
+  await page.getByRole('button', { name: 'Load 200 more entities' }).click();
+  await expect(loadState).toHaveText('400 of 450 entities loaded');
+  // Load-more is bounded: exactly one further page, never a whole-source fetch.
+  await expect.poll(() => requests.map((r) => r.offset)).toContain(200);
+  expect(new Set(requests.map((r) => r.offset))).toEqual(new Set([0, 200]));
+
+  await page.getByRole('button', { name: 'Load 200 more entities' }).click();
+  await expect(loadState).toHaveText('450 of 450 entities loaded');
+  await expect(page.getByRole('button', { name: 'Load 200 more entities' })).toHaveCount(0);
+
+  // Related events page independently of the entity list.
+  await page.locator('.item-list-row').first().click();
+  const relatedState = page.locator('.related-load-state');
+  await expect(relatedState).toHaveText('Related timeline — 100 of 250 events loaded');
+  await page.getByRole('button', { name: 'Load 100 more events' }).click();
+  await expect(relatedState).toHaveText('Related timeline — 200 of 250 events loaded');
+
+  // A filter restarts paging from offset 0 and reports the filtered total.
+  await page.getByLabel('Search entities').fill('analyst');
+  await expect(loadState).toHaveText('30 of 30 entities loaded (filtered)');
+  await expect.poll(() => requests.at(-1)).toMatchObject({ offset: 0, q: 'analyst' });
+
+  await page.getByRole('button', { name: 'Reset filters' }).click();
+  await expect(page.getByLabel('Search entities')).toHaveValue('');
+  await expect(loadState).toHaveText('200 of 450 entities loaded');
+});
+
+test('a failed entity page keeps loaded rows and recovers on retry', async ({ page }) => {
+  await installApiMocks(page, {
+    authedInitially: true,
+    entityTotal: 450,
+    entityFailOffsets: [200],
+  });
+
+  await gotoApp(page, `/cases/${baseCase.id}`);
+  await page.getByRole('button', { name: 'Entities', exact: true }).click();
+
+  const loadState = page.locator('.entity-load-state');
+  await expect(loadState).toHaveText('200 of 450 entities loaded');
+
+  await page.getByRole('button', { name: 'Load 200 more entities' }).click();
+  await expect(page.locator('.alert-error')).toContainText('Could not load more entities');
+  // The rows already on screen survive the failure.
+  await expect(loadState).toHaveText('200 of 450 entities loaded');
+  await expect(page.locator('.item-list-row')).toHaveCount(200);
+
+  await page.locator('.alert-error').getByRole('button', { name: 'Retry' }).click();
+  await expect(page.locator('.alert-error')).toHaveCount(0);
+  await expect(loadState).toHaveText('400 of 450 entities loaded');
+});
+
+test('a failed first entity page is an error, not an empty result', async ({ page }) => {
+  await installApiMocks(page, {
+    authedInitially: true,
+    entityTotal: 3,
+    // React's development StrictMode runs the mount effect twice; both initial
+    // requests fail, while the explicit retry succeeds.
+    entityFailOffsets: [0, 0],
+  });
+
+  await gotoApp(page, `/cases/${baseCase.id}`);
+  await page.getByRole('button', { name: 'Entities', exact: true }).click();
+
+  const error = page.locator('.alert-error');
+  await expect(error).toContainText('No results for this query were loaded');
+  await expect(page.getByText('No entities match your filters.')).toHaveCount(0);
+  await expect(page.locator('.entity-load-state')).toHaveCount(0);
+
+  await error.getByRole('button', { name: 'Retry' }).click();
+  await expect(error).toHaveCount(0);
+  await expect(page.locator('.entity-load-state')).toHaveText('3 of 3 entities loaded');
+});
+
+test('successful pages disclose when exact totals are unavailable', async ({ page }) => {
+  await installApiMocks(page, {
+    authedInitially: true,
+    entityTotal: 250,
+    entityCountFails: true,
+    entityEventTotal: 150,
+    entityEventCountFails: true,
+  });
+
+  await gotoApp(page, `/cases/${baseCase.id}`);
+  await page.getByRole('button', { name: 'Entities', exact: true }).click();
+  await expect(page.locator('.entity-load-state')).toHaveText(
+    '200 entities loaded (total unavailable)'
+  );
+
+  await page.locator('.item-list-row').first().click();
+  await expect(page.locator('.related-load-state')).toHaveText(
+    'Related timeline — 100 events loaded (total unavailable)'
+  );
+});
+
+test('a failed related-event page keeps loaded rows and retries that page', async ({ page }) => {
+  await installApiMocks(page, {
+    authedInitially: true,
+    entityEventTotal: 250,
+    entityEventFailOffsets: [100],
+  });
+
+  await gotoApp(page, `/cases/${baseCase.id}`);
+  await page.getByRole('button', { name: 'Entities', exact: true }).click();
+  await page.locator('.item-list-row').first().click();
+
+  const relatedPanel = page.locator('.resizable-split > .panel').nth(1);
+  const loadState = relatedPanel.locator('.related-load-state');
+  await expect(loadState).toHaveText('Related timeline — 100 of 250 events loaded');
+  await relatedPanel.getByRole('button', { name: 'Load 100 more events' }).click();
+  await expect(relatedPanel.locator('.alert-error')).toContainText(
+    'Could not load more related events'
+  );
+  await expect(loadState).toHaveText('Related timeline — 100 of 250 events loaded');
+  await expect(relatedPanel.locator('.item-list-row')).toHaveCount(100);
+
+  await relatedPanel.locator('.alert-error').getByRole('button', { name: 'Retry' }).click();
+  await expect(relatedPanel.locator('.alert-error')).toHaveCount(0);
+  await expect(loadState).toHaveText('Related timeline — 200 of 250 events loaded');
+});
+
+test('a superseded entity filter response cannot overwrite the newer one', async ({ page }) => {
+  await installApiMocks(page, {
+    authedInitially: true,
+    entityTotal: 450,
+    entityFilteredTotal: 30,
+  });
+
+  let releaseStaleResponse!: () => void;
+  const staleGate = new Promise<void>((resolve) => { releaseStaleResponse = resolve; });
+  // Hold the "slow" filter's list response open until the newer filter settles.
+  await page.route('**/api/v1/cases/*/sources/*/entities?*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('q') === 'slow') {
+      await staleGate;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          {
+            id: '88888888-8888-8888-8888-999999999999',
+            evidence_source_id: baseSource.id,
+            entity_type: 'user',
+            display_name: 'stale-result',
+            attributes: {},
+          },
+        ]),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await gotoApp(page, `/cases/${baseCase.id}`);
+  await page.getByRole('button', { name: 'Entities', exact: true }).click();
+  await expect(page.locator('.entity-load-state')).toHaveText('200 of 450 entities loaded');
+
+  await page.getByLabel('Search entities').fill('slow');
+  await page.getByLabel('Search entities').fill('fresh');
+  await expect(page.locator('.entity-load-state')).toHaveText('30 of 30 entities loaded (filtered)');
+
+  releaseStaleResponse();
+  // The late response belongs to a superseded generation and must be dropped.
+  await expect(page.getByText('stale-result')).toHaveCount(0);
+  await expect(page.locator('.entity-load-state')).toHaveText('30 of 30 entities loaded (filtered)');
+});
+
 test('danger confirmation is modal, labelled, and restores focus', async ({ page }) => {
   await installApiMocks(page, { authedInitially: true });
   await gotoApp(page, '/');
