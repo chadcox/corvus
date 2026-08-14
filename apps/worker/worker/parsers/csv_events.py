@@ -26,6 +26,21 @@ TIMESTAMP_COLUMNS = (
 # KAPE CopyLog can be 80k+ file rows; cap for responsive ingest (Disk view has full tree)
 MAX_KAPE_COLLECTION_EVENTS = 10_000
 
+# Generic CSV parsing stops once an event has been emitted from a row past this
+# 0-based index, bounding memory for oversized parser output. Rows without a
+# usable timestamp are skipped before the check, so the retained prefix can run
+# slightly past this index; the exact stop point is reported in the note below.
+MAX_CSV_ROW_INDEX = 500_000
+
+# Notes describing an incomplete parse start with this prefix so ingest can
+# recognise a partial result without re-inspecting the source file.
+PARTIAL_PARSE_NOTE_PREFIX = "Partial parse:"
+
+
+def is_partial_parse_note(note: str | None) -> bool:
+    """True when an ingest note reports an incompletely parsed input file."""
+    return bool(note) and str(note).startswith(PARTIAL_PARSE_NOTE_PREFIX)
+
 
 def _normalize_timestamp(value: str) -> str:
     """Trim .NET 7-digit fractional seconds to 6 for Python strptime."""
@@ -127,7 +142,9 @@ def parse_csv_to_events(
 ) -> tuple[list[dict[str, Any]], str | None]:
     """Map EZ Tools / KAPE CSV rows to timeline event dicts.
 
-    Returns (events, optional_note) when collection logs are capped.
+    Returns (events, optional_note). The note is set when the CopyLog event cap
+    applies, or when the row ceiling stopped parsing before the end of the file
+    (a partial result the caller must surface rather than treat as complete).
     """
     events: list[dict[str, Any]] = []
     artifact = _artifact_label(csv_path)
@@ -174,7 +191,24 @@ def parse_csv_to_events(
                     "entity_refs": [],
                 }
             )
-            if i > 500_000:
+            if i > MAX_CSV_ROW_INDEX:
+                # Read a single sentinel row to tell "the file ended here" from
+                # "there is more we are not parsing". The tail is never counted,
+                # so the number of omitted rows stays unknown by design.
+                try:
+                    has_more = next(reader, None) is not None
+                except csv.Error:
+                    # Unreadable trailing content still means the file did not
+                    # end at the ceiling; report the parse as partial.
+                    has_more = True
+                if has_more:
+                    note = (
+                        f"{PARTIAL_PARSE_NOTE_PREFIX} {csv_path.name} exceeded the generic CSV "
+                        f"parser row ceiling (stops after row index {MAX_CSV_ROW_INDEX}); "
+                        f"inspected {i + 1} rows and emitted {len(events)} timeline events. "
+                        f"The rest of the file was not read, so the number of omitted rows "
+                        f"is unknown. Re-ingest after splitting the file to parse the remainder."
+                    )
                 break
 
     return events, note

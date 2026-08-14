@@ -35,13 +35,17 @@ def _run_tool_and_parse(
     input_path: Path,
     output_dir: Path,
     eid: str,
-) -> list[dict[str, Any]]:
-    """Run a single EZ Tool then parse its CSV output. Thread-safe."""
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Run a single EZ Tool then parse its CSV output. Thread-safe.
+
+    Returns (events, notes); parser notes (cap/partial-parse warnings) are kept
+    so tool-generated CSVs surface the same warnings as pre-parsed ones.
+    """
     csv_out = run_fn(input_path, output_dir)
     if csv_out:
-        evts, _ = parse_csv_to_events(csv_out, eid)
-        return evts
-    return []
+        evts, note = parse_csv_to_events(csv_out, eid)
+        return evts, [note] if note else []
+    return [], []
 
 
 def _parallel_tool_parse(
@@ -49,19 +53,41 @@ def _parallel_tool_parse(
     inputs: list[Path],
     output_dir: Path,
     eid: str,
-) -> list[dict[str, Any]]:
-    """Run run_fn across inputs in a bounded thread pool, concatenate events."""
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Run run_fn across inputs in a bounded thread pool, concatenate results.
+
+    Results are collected in input order — every task must finish before the
+    pool exits either way, so ordering costs nothing and keeps events and notes
+    deterministic for a given package.
+    """
     if not inputs:
-        return []
+        return [], []
     out: list[dict[str, Any]] = []
+    notes: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=_MAX_TOOL_WORKERS) as pool:
         futures = [
             pool.submit(_run_tool_and_parse, run_fn, p, output_dir, eid)
             for p in inputs
         ]
-        for fut in concurrent.futures.as_completed(futures):
-            out.extend(fut.result())
-    return out
+        for fut in futures:
+            evts, tool_notes = fut.result()
+            out.extend(evts)
+            notes.extend(tool_notes)
+    return out, notes
+
+
+def _extend_from_tools(
+    timeline: list[dict[str, Any]],
+    ingest_notes: list[str],
+    run_fn: Callable[[Path, Path], Path | None],
+    inputs: list[Path],
+    output_dir: Path,
+    eid: str,
+) -> None:
+    """Run a tool over inputs and fold both events and parser notes into ingest."""
+    events, notes = _parallel_tool_parse(run_fn, inputs, output_dir, eid)
+    timeline.extend(events)
+    ingest_notes.extend(notes)
 
 
 # Module CSV filename hint → the raw-artifact category it already covers.
@@ -172,8 +198,8 @@ def ingest_package(
             f"Running EvtxECmd on {len(layout.evtx_files)} EVTX file(s) "
             f"({_MAX_TOOL_WORKERS} workers)",
         )
-        timeline.extend(
-            _parallel_tool_parse(run_evtxecmd, layout.evtx_files, parsed_dir / "evtx", eid)
+        _extend_from_tools(
+            timeline, ingest_notes, run_evtxecmd, layout.evtx_files, parsed_dir / "evtx", eid
         )
 
     if "mft" not in preparsed:
@@ -182,8 +208,8 @@ def ingest_package(
             f"Running MFTECmd on {len(layout.mft_files)} MFT export(s) "
             f"({_MAX_TOOL_WORKERS} workers)",
         )
-        timeline.extend(
-            _parallel_tool_parse(run_mftecmd, layout.mft_files, parsed_dir / "mft", eid)
+        _extend_from_tools(
+            timeline, ingest_notes, run_mftecmd, layout.mft_files, parsed_dir / "mft", eid
         )
 
     if "registry" not in preparsed:
@@ -192,8 +218,8 @@ def ingest_package(
             f"Running RECmd on {len(layout.registry_hives)} registry hive(s) "
             f"({_MAX_TOOL_WORKERS} workers)",
         )
-        timeline.extend(
-            _parallel_tool_parse(run_recmd, layout.registry_hives, parsed_dir / "registry", eid)
+        _extend_from_tools(
+            timeline, ingest_notes, run_recmd, layout.registry_hives, parsed_dir / "registry", eid
         )
 
     if "prefetch" not in preparsed:
@@ -203,8 +229,8 @@ def ingest_package(
             f"Running PECmd on {len(prefetch_inputs)} prefetch file(s) "
             f"({_MAX_TOOL_WORKERS} workers)",
         )
-        timeline.extend(
-            _parallel_tool_parse(run_pecmd, prefetch_inputs, parsed_dir / "prefetch", eid)
+        _extend_from_tools(
+            timeline, ingest_notes, run_pecmd, prefetch_inputs, parsed_dir / "prefetch", eid
         )
 
     if "amcache" not in preparsed:
@@ -214,10 +240,8 @@ def ingest_package(
             f"Running AmcacheParser on {len(amcache_inputs)} amcache hive(s) "
             f"({_MAX_TOOL_WORKERS} workers)",
         )
-        timeline.extend(
-            _parallel_tool_parse(
-                run_amcacheparser, amcache_inputs, parsed_dir / "amcache", eid
-            )
+        _extend_from_tools(
+            timeline, ingest_notes, run_amcacheparser, amcache_inputs, parsed_dir / "amcache", eid
         )
 
     browser_events = 0
