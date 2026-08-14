@@ -34,6 +34,22 @@ All notable changes to this project are documented here. Format loosely follows
 - `.env.example` no longer ships a working default admin password.
 
 ### Fixed
+- Packages holding many raw Prefetch files no longer ingest a silently partial
+  set. Ingest has always handed at most 100 `.pf` files to PECmd, taken in
+  filesystem traversal order and with no record of what was left out, so a
+  completed source could omit Prefetch evidence without saying so — and, with
+  `DELETE_EVIDENCE_AFTER_INGEST=true`, the omitted files were deleted with the
+  package. The ceiling is now configurable (`PREFETCH_MAX_FILES`, default `100`,
+  values below 1 treated as 1), files are selected in package-relative path
+  order so re-ingesting the same package covers the same subset, and going over
+  the ceiling adds a partial-parse ingest note reporting how many `.pf` files
+  were found, parsed, and omitted (counts only — no collected paths). That note
+  reuses the existing partial-ingest handling: the job still completes with
+  usable Prefetch events, the package is retained even when deletion is enabled,
+  and the ingest panel now marks such a job as an incomplete ingest instead of
+  listing the note among ordinary diagnostics. A package shipping a populated
+  PECmd CSV still suppresses raw Prefetch parsing with no note; an empty PECmd
+  CSV still falls back to raw parsing. Other parser ceilings are unchanged.
 - MFT path search now covers every record in the source instead of the 500-row
   page loaded in the browser. The timeline `q` filter, when combined with
   `mft_only`, also matches the record's reconstructed path
