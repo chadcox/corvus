@@ -23,6 +23,21 @@ All notable changes to this project are documented here. Format loosely follows
   (default `true`).
 
 ### Changed
+- Timeline CSV export truncation is no longer silent. The cap stays a fixed
+  50,000 rows with no new configuration, but the response now carries
+  `X-Corvus-Export-Truncated`, `X-Corvus-Export-Row-Limit`, and
+  `X-Corvus-Export-Row-Count` headers, exposed to browser callers via
+  `Access-Control-Expose-Headers` on the route. The three values and the CSV body
+  are all derived from a single row list materialized before the response is
+  constructed, so a header can never disagree with the bytes that shipped. The
+  CSV itself is byte-identical to before: truncation is disclosed in headers
+  only, never as a warning row that downstream tooling would read as evidence.
+  The timeline view now downloads the CSV through the authenticated API client
+  and saves a blob rather than following a plain link, which is what makes the
+  export work at all on the token-protected router, and reports the outcome after
+  the download in a status live region — complete, partial (with the exact number
+  of rows written, oldest by timestamp), unverified when the API reported no
+  headers, or the failure reason. `timeline/count` is unchanged.
 - API archive extraction now rejects uploads whose members claim the same path as
   both a file and a directory, and enforces a fixed ceiling on the number of
   distinct path components an archive may declare. That structural ceiling is

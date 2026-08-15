@@ -19,6 +19,13 @@ router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/timeline", tags=
 
 EXPORT_MAX = 50_000
 
+# Additive response headers that make CSV export truncation explicit. The CSV
+# body itself is unchanged: a spreadsheet-safe export must not carry a warning
+# row that downstream tooling would read as evidence.
+EXPORT_TRUNCATED_HEADER = "X-Corvus-Export-Truncated"
+EXPORT_ROW_LIMIT_HEADER = "X-Corvus-Export-Row-Limit"
+EXPORT_ROW_COUNT_HEADER = "X-Corvus-Export-Row-Count"
+
 BROWSER_CATEGORY_TYPES: dict[str, list[str]] = {
     "visits": ["browser.visit"],
     "downloads": ["browser.download"],
@@ -248,9 +255,31 @@ def export_timeline_csv(
     browser_category: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
-    """Download filtered timeline events as CSV for reporting."""
+    """Download filtered timeline events as CSV for reporting.
+
+    The export is capped at ``EXPORT_MAX`` rows. Truncation is reported in
+    additive ``X-Corvus-Export-*`` response headers rather than in the CSV body,
+    so a partial export is never mistaken for a complete one and no
+    non-evidence row is introduced into the analyst's spreadsheet.
+    """
     source = _get_source(db, case_id, source_id)
-    query = (
+
+    # One query, materialized before the response exists.
+    #
+    # Response headers are frozen the moment StreamingResponse is constructed,
+    # while the body is produced later by the generator. Anything derived from a
+    # second query (a COUNT, a probe) can disagree with the bytes that actually
+    # ship if rows are inserted or deleted in between, which would let a header
+    # claim "complete" over a partial file. So the row list below is the single
+    # source of truth for the truncated flag, the row count header, and the CSV
+    # body alike; they cannot drift because they are the same list.
+    #
+    # Fetching EXPORT_MAX + 1 rows detects "there is at least one more match"
+    # without a COUNT over the whole filter. Buffering is bounded by
+    # construction: at most 50,001 five-column tuples of scalar values (no ORM
+    # identity map entries, since with_entities selects columns), which is a few
+    # tens of MB worst case and the same order as the streamed body itself.
+    rows = (
         _filtered_timeline_query(
             db,
             source_id,
@@ -271,8 +300,15 @@ def export_timeline_csv(
             TimelineEvent.artifact_type,
             TimelineEvent.original_source,
         )
-        .limit(EXPORT_MAX)
+        .limit(EXPORT_MAX + 1)
+        .all()
     )
+
+    truncated = len(rows) > EXPORT_MAX
+    # The sentinel row is only evidence that more matches exist; it is never
+    # written, so the header count and the body length stay equal.
+    export_rows = rows[:EXPORT_MAX]
+    row_count = len(export_rows)
 
     escape = settings.csv_export_formula_escape
 
@@ -283,7 +319,7 @@ def export_timeline_csv(
             ["timestamp_utc", "event_type", "summary", "artifact_type", "original_source"]
         )
         yield buffer.getvalue()
-        for ev in query.yield_per(2000):
+        for ev in export_rows:
             buffer.seek(0)
             buffer.truncate(0)
             writer.writerow(
@@ -302,8 +338,22 @@ def export_timeline_csv(
 
     safe_host = re.sub(r"[^A-Za-z0-9._-]", "_", source.hostname or "host")
     filename = f"timeline-{safe_host}.csv"
-    return StreamingResponse(
-        generate(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    headers = {
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        EXPORT_TRUNCATED_HEADER: "true" if truncated else "false",
+        EXPORT_ROW_LIMIT_HEADER: str(EXPORT_MAX),
+        EXPORT_ROW_COUNT_HEADER: str(row_count),
+        # The web app is served from a different origin, so these headers are
+        # unreadable by browser callers unless CORS exposes them explicitly.
+        # This is set per-route because the global CORSMiddleware is configured
+        # without expose_headers; adding one there would override this value.
+        "Access-Control-Expose-Headers": ", ".join(
+            [
+                "Content-Disposition",
+                EXPORT_TRUNCATED_HEADER,
+                EXPORT_ROW_LIMIT_HEADER,
+                EXPORT_ROW_COUNT_HEADER,
+            ]
+        ),
+    }
+    return StreamingResponse(generate(), media_type="text/csv", headers=headers)

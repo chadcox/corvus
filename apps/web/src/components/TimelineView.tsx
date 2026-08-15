@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { api, Entity, TimelineEvent, TimelineHistogram } from "../api/client";
+import { api, ApiAuthError, Entity, TimelineEvent, TimelineHistogram } from "../api/client";
 import { SigmaEventBadges } from "./SigmaFindingsPanel";
 import TimelineChart from "./TimelineChart";
 import { formatEventTypeLabel } from "../utils/eventCodes";
 
 const PAGE_SIZE = 10000;
 type RowDensity = "compact" | "analyst";
+// The export outcome is only ever derived from the response headers of the
+// download that just finished, never from a pre-download estimate.
+type ExportOutcome = { kind: "complete" | "partial" | "unverified" | "error"; message: string };
 const PIVOT_FIELDS = [
   "UserName",
   "TargetUserName",
@@ -107,6 +110,27 @@ function rowPreview(ev: TimelineEvent): {
   };
 }
 
+// A fetched CSV has to be handed to the browser as a blob; a plain link to the
+// API cannot carry the bearer token the timeline router requires.
+function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Revoke after the click has been dispatched, or the download can be dropped.
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+// Row counts come from response headers, so an absent header must read as
+// "not reported" rather than as a number the UI made up.
+function rowText(value: number | null): string {
+  if (value == null) return "an unreported number of rows";
+  return `${value.toLocaleString()} ${value === 1 ? "row" : "rows"}`;
+}
+
 export default function TimelineView({
   caseId,
   sourceId,
@@ -132,6 +156,8 @@ export default function TimelineView({
   const [loading, setLoading] = useState(true);
   const [loadingPageCount, setLoadingPageCount] = useState(0);
   const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportOutcome, setExportOutcome] = useState<ExportOutcome | null>(null);
   const [pagingError, setPagingError] = useState<string | null>(null);
   const [sigmaOnly, setSigmaOnly] = useState(sigmaOnlyProp);
   const [histogram, setHistogram] = useState<TimelineHistogram | null>(null);
@@ -241,6 +267,8 @@ export default function TimelineView({
     setTotalCount(null);
     setLoadingPageCount(0);
     setPagingError(null);
+    // A previous filter's export result says nothing about this one.
+    setExportOutcome(null);
     parentRef.current?.scrollTo({ top: 0 });
     const listReq = api.listTimeline(caseId, sourceId, {
       ...filterOpts,
@@ -373,6 +401,58 @@ export default function TimelineView({
       .catch(() => setLinkedEntities([]));
   }, [caseId, sourceId, selected]);
 
+  // One click, one download. There is no pre-download prompt: the browser only
+  // learns whether the cap was hit from the response headers, so the honest
+  // outcome is reported after the file is written rather than guessed before.
+  const runExport = useCallback(async () => {
+    setExporting(true);
+    setExportOutcome(null);
+    try {
+      const result = await api.downloadTimelineCsv(caseId, sourceId, filterOpts);
+      saveBlob(result.blob, result.filename);
+      if (result.truncated === true) {
+        // Only the written row count is known. The number of matches beyond the
+        // cap is deliberately not claimed: the API does not report it, and
+        // inventing a total would misstate the evidence.
+        setExportOutcome({
+          kind: "partial",
+          message: `Partial export: ${rowText(result.rowCount)} written to ${
+            result.filename
+          } — the oldest matches by timestamp, up to the export cap of ${rowText(
+            result.rowLimit
+          )}. More events match this filter than were written; narrow the time range or filters to export the rest.`,
+        });
+      } else if (result.truncated === false) {
+        setExportOutcome({
+          kind: "complete",
+          message: `Complete export: ${rowText(result.rowCount)} written to ${
+            result.filename
+          }. Every event matching this filter is in the file.`,
+        });
+      } else {
+        setExportOutcome({
+          kind: "unverified",
+          message: `Downloaded ${result.filename}, but the API did not report whether the export was truncated. Treat completeness as unconfirmed.`,
+        });
+      }
+    } catch (err) {
+      setExportOutcome({
+        kind: "error",
+        message:
+          err instanceof ApiAuthError
+            ? "Export failed: this session is no longer authorized. Sign in again and retry."
+            : `Export failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    } finally {
+      setExporting(false);
+    }
+  }, [caseId, sourceId, filterOpts]);
+
+  const handleExportClick = () => {
+    if (exporting) return;
+    void runExport();
+  };
+
   const hasFilters = Boolean(q || eventType || artifactType || start || end);
   const pivotValues = selected
     ? PIVOT_FIELDS.map((field) => [field, valueText(selected.data[field])] as const)
@@ -438,13 +518,15 @@ export default function TimelineView({
               <option value="compact">Compact rows</option>
               <option value="analyst">Analyst rows</option>
             </select>
-            <a
-              href={api.timelineExportUrl(caseId, sourceId, filterOpts)}
+            <button
+              type="button"
               className="export-link"
-              download
+              onClick={handleExportClick}
+              disabled={exporting}
+              aria-busy={exporting}
             >
-              Export CSV
-            </a>
+              {exporting ? "Exporting…" : "Export CSV"}
+            </button>
           </div>
         </div>
         {viewDescription && (
@@ -640,6 +722,27 @@ export default function TimelineView({
         {pagingError && (
           <p className="panel-desc" style={{ marginTop: "0.5rem", color: "var(--danger)" }}>{pagingError}</p>
         )}
+        {/* Mounted unconditionally with a fixed role: a live region added to the
+            DOM at the same time as its text is frequently not announced, and a
+            role that changes between renders re-registers the region and can
+            drop the message. Only the text inside it changes. */}
+        <p
+          className="panel-desc"
+          data-testid="timeline-export-outcome"
+          role="status"
+          aria-live="polite"
+          style={{
+            marginTop: exportOutcome ? "0.5rem" : 0,
+            color:
+              exportOutcome?.kind === "complete"
+                ? "var(--success)"
+                : exportOutcome?.kind === "error"
+                  ? "var(--danger)"
+                  : "var(--warn)",
+          }}
+        >
+          {exportOutcome?.message ?? ""}
+        </p>
       </div>
 
       <div

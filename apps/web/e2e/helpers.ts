@@ -56,6 +56,13 @@ type MockOptions = {
     q: string | null;
     mftOnly: boolean;
   }) => void;
+  exportStatus?: number;
+  exportTruncated?: boolean;
+  exportRowCount?: number;
+  exportRowLimit?: number;
+  /** Answer the export without X-Corvus-Export-* headers, as an older API would. */
+  exportOmitMetadata?: boolean;
+  onExportRequest?: (params: { authorization: string | null }) => void;
   adminJobs?: Array<Record<string, unknown>>;
   sourceStatus?: string;
   sourceJobs?: Array<Record<string, unknown>>;
@@ -79,6 +86,12 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     timelineTotal = 1,
     timelineFilteredTotal = timelineTotal,
     onTimelineRequest,
+    exportStatus = 200,
+    exportTruncated = false,
+    exportRowCount,
+    exportRowLimit = 50000,
+    exportOmitMetadata = false,
+    onExportRequest,
     adminJobs = [],
     sourceStatus = baseSource.status,
     sourceJobs = [],
@@ -225,6 +238,38 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/timeline\/count/.test(path) && method === 'GET') {
       const searched = url.searchParams.get('q');
       await json(route, { count: searched ? timelineFilteredTotal : timelineTotal });
+      return;
+    }
+
+    // Must precede the generic timeline route, which also matches this path.
+    if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/timeline\/export/.test(path) && method === 'GET') {
+      onExportRequest?.({ authorization: req.headers()['authorization'] ?? null });
+      if (exportStatus !== 200) {
+        await json(route, { detail: 'Not authenticated' }, exportStatus);
+        return;
+      }
+      const rowCount = exportRowCount ?? Math.min(timelineTotal, exportRowLimit);
+      const rows = Array.from(
+        { length: rowCount },
+        (_, index) => `2026-01-01T00:00:0${index % 10}Z,logon,User logon ${index + 1},mft,security.evtx`
+      );
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': 'attachment; filename="timeline-WKS-042.csv"',
+          // An older API omits the disclosure headers entirely; the UI must then
+          // report completeness as unverified rather than assume success.
+          ...(exportOmitMetadata
+            ? {}
+            : {
+                'x-corvus-export-truncated': exportTruncated ? 'true' : 'false',
+                'x-corvus-export-row-limit': String(exportRowLimit),
+                'x-corvus-export-row-count': String(rowCount),
+              }),
+        },
+        body: ['timestamp_utc,event_type,summary,artifact_type,original_source', ...rows].join('\n'),
+      });
       return;
     }
 

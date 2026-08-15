@@ -52,6 +52,10 @@ class FakeQuery:
     def limit(self, *_args, **_kwargs):
         return self
 
+    def all(self):
+        """The timeline export materializes its rows before streaming."""
+        return self.rows
+
     def first(self):
         return self.rows[0] if self.rows else None
 
