@@ -13,10 +13,11 @@ colors:
   bone: "#e5e7eb"
   bone-soft: "#cbd5e1"
   cold-slate: "#94a3b8"
-  instrument-blue: "#3b82f6"
+  instrument-blue: "#2563eb"
+  instrument-blue-hover: "#1d4ed8"
   instrument-blue-bright: "#60a5fa"
-  instrument-blue-dim: "rgba(59, 130, 246, 0.16)"
-  instrument-blue-border: "rgba(59, 130, 246, 0.44)"
+  instrument-blue-dim: "rgba(37, 99, 235, 0.16)"
+  instrument-blue-border: "rgba(37, 99, 235, 0.44)"
   trace-cyan: "#22d3ee"
   trace-cyan-dim: "rgba(34, 211, 238, 0.12)"
   success: "#10b981"
@@ -109,7 +110,7 @@ components:
     rounded: "{rounded.sm}"
     padding: "0.55rem 1.1rem"
   button-primary-hover:
-    backgroundColor: "{colors.instrument-blue-bright}"
+    backgroundColor: "{colors.instrument-blue-hover}"
     textColor: "#ffffff"
   button-secondary:
     backgroundColor: "transparent"
@@ -199,8 +200,9 @@ The typographic pairing does the personality work that color refuses to: Syne, a
 A cold, low-chroma workspace palette: near-black ground, blue-grey slate surfaces, a single saturated blue for interaction, and a strictly quarantined warm range for severity.
 
 ### Primary
-- **Instrument Blue** (`#3b82f6`): The only interaction color. Primary buttons, active view tabs, active stat-card rails, focus borders, progress fill. Its dim form `rgba(59, 130, 246, 0.16)` fills active states; its border form `rgba(59, 130, 246, 0.44)` outlines them; the 3px focus ring is that same dim blue.
-- **Instrument Blue Bright** (`#60a5fa`): Hover state for primary buttons and links, and the color of `.section-label` micro-headings — the one place the accent is used as text at rest.
+- **Instrument Blue** (`#2563eb`): The only interaction color. Primary buttons, active view tabs, active stat-card rails, focus borders, progress fill. Its dim form `rgba(37, 99, 235, 0.16)` fills active states; its border form `rgba(37, 99, 235, 0.44)` outlines them.
+- **Instrument Blue Hover** (`#1d4ed8`): Primary-button hover background; darker than the resting blue so white control text keeps at least AA contrast.
+- **Instrument Blue Bright** (`#60a5fa`): Link hover, focus ring, and `.section-label` micro-headings — the one place the accent is used as text at rest.
 
 ### Secondary
 - **Trace Cyan** (`#22d3ee`): Links and cross-view pivots — the "follow this into another view" color. Distinct from the accent so a navigable trace never reads as a button.
@@ -259,7 +261,7 @@ Corvus is tonal-first. Depth comes from the surface ladder — ground `#06080f`,
 
 ### Shadow Vocabulary
 - **Panel seat** (`box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28)`): Ambient, applied to `.panel` only. Soft and low-contrast — you should notice the panel edge, not the shadow.
-- **Focus ring** (`box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.16)`): The universal focus and hover-confirm ring on buttons and inputs. Danger controls swap the tint to `rgba(239, 68, 68, 0.14)`.
+- **Focus ring** (`box-shadow: 0 0 0 3px #60a5fa`): The universal keyboard-focus ring on buttons and inputs. Danger controls use the solid danger hue.
 - **Active rail** (`box-shadow: inset 3px 0 0 var(--primary)` on cards, `inset 0 -3px 0 var(--primary)` on tabs): Selection is marked by an inset rail, not by lifting the element.
 
 ### Named Rules
@@ -277,14 +279,14 @@ Components should feel **tactile and responsive**: every control acknowledges in
 
 ### Buttons
 - **Shape:** 4px radius (`--radius-sm`), no border on the primary.
-- **Primary:** Instrument Blue `#3b82f6` on white text, `0.55rem 1.1rem`, Libre Franklin 600 / 0.875rem / ls 0.02em.
-- **Hover / Focus:** background lifts to `#60a5fa` with a `0 0 0 3px rgba(59,130,246,0.16)` ring; `:active` translates 1px down; `:disabled` drops to 0.45 opacity with `not-allowed`.
-- **Secondary:** transparent on a `rgba(148,163,184,0.32)` hairline with `--text-soft` label; hover fills `--surface-2` and shifts the border to accent-dim. No ring.
+- **Primary:** Instrument Blue `#2563eb` on white text, `0.55rem 1.1rem`, Libre Franklin 600 / 0.875rem / ls 0.02em.
+- **Hover / Focus:** hover darkens to `#1d4ed8`; keyboard focus adds a `0 0 0 3px #60a5fa` ring; `:active` translates 1px down; `:disabled` drops to 0.45 opacity with `not-allowed`.
+- **Secondary:** transparent on a `rgba(148,163,184,0.32)` hairline with `--text-soft` label; hover fills `--surface-2` and shifts the border to accent-dim; keyboard focus keeps the universal ring.
 - **Ghost:** transparent, borderless, muted, `0.35rem 0.6rem` — and notably hovers to `--danger` on `--danger-dim`, because ghost is the destructive-adjacent slot (remove, clear, delete).
 - **Danger:** solid `#ef4444`, white text, red-tinted focus ring.
 
 ### Chips / Badges
-- **Status badge:** mono 0.6875rem uppercase, ls 0.06em, `0.2rem 0.55rem`, 4px radius, `-dim` tint background with a solid-hue text color and a matching 25%-alpha border. Completed → success, running/pending → warn, failed → danger.
+- **Status badge:** mono 0.6875rem uppercase, ls 0.06em, `0.2rem 0.55rem`, 4px radius, `-dim` tint background with a pale text color and a matching border. Completed → success, partial/running/pending → warn, failed → danger.
 - **Severity badge:** mono 0.72rem 700 uppercase, `0.3rem 0.55rem`, `-dim` background with a pale text value and a 45%-alpha border of the severity hue; informational falls back to `--text-soft` on `--info-dim`.
 - **State:** badges are read-only labels. Filter chips that toggle use the stat-card action pattern (accent-dim fill + inset rail), not badge styling.
 

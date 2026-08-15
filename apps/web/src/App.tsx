@@ -23,6 +23,22 @@ function BrandMark() {
   );
 }
 
+function NotFoundPage() {
+  return (
+    <section className="not-found animate-in">
+      <p className="not-found-code">Error 404</p>
+      <h1 className="page-title">That page is not part of this workspace</h1>
+      <p className="page-subtitle">
+        The address you opened does not match a case, an admin screen, or any other Corvus view. It
+        may have been renamed, or the case may have been deleted.
+      </p>
+      <div className="not-found-actions">
+        <Link to="/">Back to cases</Link>
+      </div>
+    </section>
+  );
+}
+
 export default function App() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -51,11 +67,18 @@ export default function App() {
     navigate("/login");
   };
 
-  if (loadingUser) return <main className="app-main">Loading…</main>;
+  if (loadingUser) {
+    return (
+      <main className="app-main">
+        <p className="loading-text">Loading session…</p>
+      </main>
+    );
+  }
   const authed = !!user;
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <header className="app-header">
         <Link to="/" className="brand">
           <BrandMark />
@@ -74,7 +97,7 @@ export default function App() {
           </>
         )}
       </header>
-      <main className="app-main">
+      <main className="app-main" id="main-content">
         <Routes>
           <Route path="/login" element={<LoginPage user={user} onLogin={setUser} />} />
           <Route path="/" element={authed ? <CasesPage /> : <Navigate to="/login" replace />} />
@@ -87,6 +110,7 @@ export default function App() {
             path="/admin/control-panel"
             element={authed && user ? <ControlPanelPage me={user} /> : <Navigate to="/login" replace />}
           />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>
     </div>

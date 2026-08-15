@@ -11,10 +11,12 @@
   --text: #e5e7eb;
   --text-soft: #cbd5e1;
   --muted: #94a3b8;
-  --primary: #3b82f6;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
   --primary-bright: #60a5fa;
-  --primary-dim: rgba(59, 130, 246, 0.16);
-  --primary-border: rgba(59, 130, 246, 0.44);
+  --primary-dim: rgba(37, 99, 235, 0.16);
+  --primary-border: rgba(37, 99, 235, 0.44);
+  --focus-ring: #60a5fa;
   --accent: var(--primary);
   --accent-bright: var(--primary-bright);
   --accent-dim: var(--primary-border);
@@ -65,9 +67,13 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg);
 }
 
@@ -84,6 +90,32 @@ a {
 
 a:hover {
   color: var(--accent-bright);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Keyboard users land here first; visible only while focused. */
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: -3rem;
+  z-index: 200;
+  padding: 0.5rem 0.9rem;
+  background: var(--surface-2);
+  border: 1px solid var(--primary-border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus-visible {
+  top: 0.5rem;
 }
 
 button,
@@ -106,8 +138,8 @@ button {
   transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
 }
 
-button:hover:not(:disabled) {
-  background: var(--primary-bright);
+button:where(:hover:not(:disabled):not(.stat-card--action, .view-tab)) {
+  background: var(--primary-hover);
   box-shadow: 0 0 0 3px var(--primary-dim);
 }
 
@@ -127,7 +159,7 @@ button.secondary {
   box-shadow: none;
 }
 
-button.secondary:hover:not(:disabled) {
+button.secondary:where(:hover:not(:disabled)) {
   background: var(--surface-2);
   border-color: var(--accent-dim);
   color: var(--text);
@@ -142,7 +174,7 @@ button.ghost {
   box-shadow: none;
 }
 
-button.ghost:hover:not(:disabled) {
+button.ghost:where(:hover:not(:disabled)) {
   color: var(--danger);
   background: var(--danger-dim);
   box-shadow: none;
@@ -154,9 +186,18 @@ button.danger {
   box-shadow: none;
 }
 
-button.danger:hover:not(:disabled) {
+button.danger:where(:hover:not(:disabled)) {
   background: var(--danger-bright, var(--danger));
   box-shadow: 0 0 0 3px var(--danger-dim);
+}
+
+button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+button.danger:focus-visible {
+  box-shadow: 0 0 0 3px var(--danger);
 }
 
 input,
@@ -225,3 +266,36 @@ input::placeholder {
 .animate-in-delay-2 { animation-delay: 0.12s; }
 .animate-in-delay-3 { animation-delay: 0.18s; }
 .animate-in-delay-4 { animation-delay: 0.24s; }
+
+/* Placeholder blocks that match the shape of the content still loading. */
+@keyframes skeleton-sweep {
+  from { background-position: 180% 0; }
+  to { background-position: -80% 0; }
+}
+
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+      90deg,
+      var(--surface-2) 0%,
+      var(--surface-3) 40%,
+      var(--surface-2) 80%
+    )
+    0 0 / 220% 100%;
+  animation: skeleton-sweep 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

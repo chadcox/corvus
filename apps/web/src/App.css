@@ -1,7 +1,7 @@
 /* ── Shell ─────────────────────────────────────────────── */
 
 .app-shell {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -80,7 +80,7 @@
 }
 
 .login-wrap {
-  min-height: calc(100vh - var(--header-height) - 4rem);
+  min-height: calc(100dvh - var(--header-height) - 4rem);
   display: grid;
   place-items: center;
 }
@@ -96,6 +96,8 @@
   font-size: 1.75rem;
   font-weight: 700;
   letter-spacing: 0;
+  line-height: 1.2;
+  text-wrap: balance;
   margin: 0 0 0.35rem;
   color: var(--text);
 }
@@ -409,7 +411,7 @@ button.stat-card--action:hover {
 }
 
 button.stat-card--action:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -495,6 +497,10 @@ button.stat-card--action.active {
   box-shadow: inset 0 -3px 0 var(--primary);
 }
 
+.view-tab.active:focus-visible {
+  box-shadow: inset 0 -3px 0 var(--primary), 0 0 0 3px var(--focus-ring);
+}
+
 .view-tab-icon {
   font-size: 1rem;
   opacity: 0.85;
@@ -517,8 +523,14 @@ button.stat-card--action.active {
 
 .status-badge.completed {
   background: var(--success-dim);
-  color: var(--success);
+  color: #a7f3d0;
   border: 1px solid rgba(77, 168, 122, 0.25);
+}
+
+.status-badge.partial {
+  background: var(--warn-dim);
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.45);
 }
 
 .status-badge.running,
@@ -853,8 +865,8 @@ button.stat-card--action.active {
 /* ── Global search (command bar) ───────────────────────── */
 
 .global-search {
-  border-color: var(--primary-border);
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.08), var(--surface));
+  border-color: var(--border);
+  background: var(--surface);
 }
 
 .global-search .search-bar {
@@ -891,6 +903,11 @@ button.stat-card--action.active {
 
 .global-search input[type="search"]:focus {
   box-shadow: none;
+}
+
+.global-search input[type="search"]:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .search-kbd {
@@ -995,6 +1012,14 @@ button.stat-card--action.active {
 
 .item-list-row:hover {
   background: var(--surface-2);
+}
+
+.item-list-row:focus-visible,
+tr.clickable:focus-visible,
+tr.mft-row:focus-visible,
+tr.browser-row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 
 .item-list-row.selected {
@@ -1701,6 +1726,51 @@ button.stat-card--action.active {
   opacity: 0.4;
 }
 
+/* Loading placeholder shaped like .case-card so the grid does not reflow. */
+.case-card-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 1.15rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.case-card-skeleton span {
+  display: block;
+  height: 0.75rem;
+}
+
+.case-card-skeleton span:first-child {
+  height: 1.15rem;
+  width: 62%;
+}
+
+.case-card-skeleton span:nth-child(2) { width: 88%; }
+.case-card-skeleton span:nth-child(3) { width: 45%; }
+
+.not-found {
+  max-width: 52ch;
+  padding: 3.5rem 0 4rem;
+}
+
+.not-found-code {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--primary-bright);
+  margin: 0 0 0.75rem;
+}
+
+.not-found-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-top: 1.5rem;
+}
+
 .alert {
   padding: 0.75rem 1rem;
   border-radius: var(--radius);
@@ -1712,7 +1782,7 @@ button.stat-card--action.active {
 .alert-error {
   background: var(--danger-dim);
   border-color: rgba(217, 72, 72, 0.3);
-  color: #f0a0a0;
+  color: #fecaca;
 }
 
 .loading-text {
@@ -1816,6 +1886,7 @@ button.stat-card--action.active {
 .summary-severity-medium { color: #fef08a; background: var(--medium-dim); border-color: rgba(234, 179, 8, 0.45); }
 .summary-severity-low { color: #bfdbfe; background: var(--low-dim); border-color: rgba(59, 130, 246, 0.45); }
 .summary-severity-informational { color: var(--text-soft); background: var(--info-dim); }
+.summary-severity-none { color: var(--muted); background: var(--surface-2); }
 
 .summary-kpis {
   display: grid;
@@ -2128,24 +2199,33 @@ button.stat-card--action.active {
 }
 
 .sigma-event-badge.sigma-level-critical {
-  background: var(--critical);
-  color: #fff;
+  background: var(--critical-dim);
+  color: #fecaca;
+  border: 1px solid rgba(239, 68, 68, 0.48);
 }
 
 .sigma-event-badge.sigma-level-high {
-  background: var(--high);
-  color: #fff;
+  background: var(--high-dim);
+  color: #fed7aa;
+  border: 1px solid rgba(249, 115, 22, 0.48);
 }
 
 .sigma-event-badge.sigma-level-medium {
-  background: var(--medium);
-  color: #1a1408;
+  background: var(--medium-dim);
+  color: #fef08a;
+  border: 1px solid rgba(234, 179, 8, 0.48);
 }
 
-.sigma-event-badge.sigma-level-low,
+.sigma-event-badge.sigma-level-low {
+  background: var(--low-dim);
+  color: #bfdbfe;
+  border: 1px solid rgba(59, 130, 246, 0.48);
+}
+
 .sigma-event-badge.sigma-level-info {
-  background: var(--low);
-  color: #fff;
+  background: var(--info-dim);
+  color: var(--text-soft);
+  border: 1px solid rgba(148, 163, 184, 0.38);
 }
 
 .item-list-row.sigma-hit-row {
@@ -2787,31 +2867,21 @@ button.stat-card--action.active {
 
 .timeline-splitter {
   cursor: col-resize;
-  border-radius: 999px;
-  background: linear-gradient(
-    to right,
-    transparent 0,
-    transparent 3px,
-    var(--border-strong) 3px,
-    var(--border-strong) 7px,
-    transparent 7px,
-    transparent 100%
-  );
+  border-radius: var(--radius-sm);
+  background: var(--border-strong);
+  background-clip: content-box;
+  padding: 0 4px;
   align-self: stretch;
 }
 
-.timeline-splitter:hover,
+.timeline-splitter:hover {
+  background: var(--surface-3);
+  background-clip: content-box;
+}
+
 .timeline-splitter:focus-visible {
-  background: linear-gradient(
-    to right,
-    transparent 0,
-    transparent 2px,
-    var(--primary-bright) 2px,
-    var(--primary-bright) 8px,
-    transparent 8px,
-    transparent 100%
-  );
-  outline: none;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 @media (max-width: 960px) {

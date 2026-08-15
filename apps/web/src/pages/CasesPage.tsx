@@ -149,8 +149,18 @@ export default function CasesPage() {
 
       <div className="animate-in animate-in-delay-3">
         <p className="section-label">Active investigations</p>
-        {loading && <p className="loading-text">Loading cases…</p>}
-        {!loading && cases.length === 0 && (
+        {loading && (
+          <ul className="cases-grid" aria-busy="true" aria-label="Loading cases">
+            {[0, 1, 2].map((i) => (
+              <li key={i} className="case-card-skeleton">
+                <span className="skeleton" />
+                <span className="skeleton" />
+                <span className="skeleton" />
+              </li>
+            ))}
+          </ul>
+        )}
+        {!loading && !error && cases.length === 0 && (
           <div className="empty-state">
             <div className="empty-state-icon">◎</div>
             <p>No cases yet. Create one above to begin your investigation.</p>

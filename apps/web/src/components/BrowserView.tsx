@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, TimelineEvent } from "../api/client";
+import { useRowNavigation } from "../hooks/useRowNavigation";
 import ResizableSplit from "./ResizableSplit";
 
 const PAGE_SIZE = 200;
@@ -145,6 +146,11 @@ export default function BrowserView({ caseId, sourceId }: Props) {
     return [...events].sort(cmp);
   }, [events, sortCol, sortDir]);
 
+  const rows = useRowNavigation<HTMLTableSectionElement>({
+    count: sortedEvents.length,
+    onActivate: useCallback((index) => setSelected(sortedEvents[index]), [sortedEvents]),
+  });
+
   return (
     <div className="animate-in animate-in-delay-3">
       <ResizableSplit
@@ -229,31 +235,33 @@ export default function BrowserView({ caseId, sourceId }: Props) {
               <table className="browser-table">
                 <thead>
                   <tr>
-                    <th>
+                    <th scope="col">
                       <button type="button" className="sort-header" onClick={() => toggleSort("time")}>
                         Time (UTC){sortIndicator("time")}
                       </button>
                     </th>
-                    <th>
+                    <th scope="col">
                       <button type="button" className="sort-header" onClick={() => toggleSort("type")}>
                         Type{sortIndicator("type")}
                       </button>
                     </th>
-                    <th>
+                    <th scope="col">
                       <button type="button" className="sort-header" onClick={() => toggleSort("url")}>
                         URL / summary{sortIndicator("url")}
                       </button>
                     </th>
                   </tr>
                 </thead>
-                <tbody>
-                  {sortedEvents.map((ev) => {
+                <tbody ref={rows.containerRef} onKeyDown={rows.onKeyDown}>
+                  {sortedEvents.map((ev, index) => {
                     const url = eventUrl(ev);
                     const title = eventTitle(ev);
                     return (
                       <tr
                         key={ev.id}
-                        className={selected?.id === ev.id ? "selected" : undefined}
+                        className={`browser-row${selected?.id === ev.id ? " selected" : ""}`}
+                        aria-current={selected?.id === ev.id ? "true" : undefined}
+                        {...rows.rowProps(index)}
                         onClick={() => setSelected(ev)}
                       >
                         <td className="mono browser-time">

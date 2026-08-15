@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useParams } from "react-router-dom";
 import {
   api,
@@ -20,6 +21,7 @@ import SigmaFindingsPanel from "../components/SigmaFindingsPanel";
 import ObjectView from "../components/ObjectView";
 import TimelineView from "../components/TimelineView";
 import ConfirmDialog from "../components/ConfirmDialog";
+import { useDialog } from "../hooks/useDialog";
 
 type Tab = "timeline" | "object" | "disk" | "mft" | "browser";
 type StatPivot = "events" | "objects" | "paths" | "sigma" | "mft" | "browser";
@@ -98,6 +100,19 @@ function isActiveJob(job: IngestJob | null): boolean {
   return !!job && ACTIVE_JOB_STATUSES.has(job.status);
 }
 
+const PARTIAL_MARKERS = [/\bIngested 0 events\b/i, /\bfailed\b/i, /\bunable to\b/i, /\bskipped\b/i];
+
+function jobDisplayStatus(job: IngestJob): { status: string; label: string } {
+  if (job.status !== "completed") return { status: job.status, label: job.status };
+  const partial =
+    !!job.error_code ||
+    !!job.error_stage ||
+    PARTIAL_MARKERS.some((pattern) => pattern.test(job.message ?? ""));
+  return partial
+    ? { status: "partial", label: "completed with errors" }
+    : { status: "completed", label: "completed" };
+}
+
 function packageFileName(packagePath: string): string {
   const clean = (packagePath || "").replace(/\\/g, "/").replace(/\/+$/, "");
   if (!clean) return "n/a";
@@ -132,12 +147,15 @@ export default function CaseDetailPage() {
   const [hostname, setHostname] = useState("");
   const [platform, setPlatform] = useState("unknown");
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [focusTimeline, setFocusTimeline] = useState<TimelineEvent | null>(null);
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const [focusEntity, setFocusEntity] = useState<Entity | null>(null);
   const [stats, setStats] = useState<SourceStats | null>(null);
   const [timelineSigmaOnly, setTimelineSigmaOnly] = useState(false);
+  const [timelineState, setTimelineState] = useState<"loading" | "error" | "empty" | "ready">("loading");
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [hashInfo, setHashInfo] = useState<EvidenceHashes | null>(null);
@@ -151,6 +169,15 @@ export default function CaseDetailPage() {
   const [ingestHistoryOpen, setIngestHistoryOpen] = useState(false);
   const [ingestHistoryLoading, setIngestHistoryLoading] = useState(false);
   const [ingestHistoryBySource, setIngestHistoryBySource] = useState<Record<string, IngestJob[]>>({});
+  const sourceInfoDialogRef = useRef<HTMLDivElement>(null);
+  const ingestHistoryDialogRef = useRef<HTMLDivElement>(null);
+  const sourceInfoTitleId = useId();
+  const ingestHistoryTitleId = useId();
+  const closeSourceInfo = useCallback(() => setSourceInfoOpen(false), []);
+  const closeIngestHistory = useCallback(() => setIngestHistoryOpen(false), []);
+
+  useDialog(sourceInfoOpen && !!sourceInfo, sourceInfoDialogRef, closeSourceInfo);
+  useDialog(ingestHistoryOpen, ingestHistoryDialogRef, closeIngestHistory);
 
   const selectedSourceData = sources.find((s) => s.id === selectedSource);
   const sourceIngesting =
@@ -168,6 +195,7 @@ export default function CaseDetailPage() {
       if (!caseId) return;
       Promise.all([api.getCase(caseId), api.listEvidence(caseId)])
         .then(([c, s]) => {
+          setLoadError(null);
           setCaseData(c);
           setSources(s);
           if (opts?.selectSourceId) {
@@ -176,7 +204,7 @@ export default function CaseDetailPage() {
             setSelectedSource(s[0].id);
           }
         })
-        .catch((e) => setError(String(e)));
+        .catch((e) => setLoadError(String(e)));
     },
     [caseId, selectedSource]
   );
@@ -193,6 +221,7 @@ export default function CaseDetailPage() {
     setHashInfo(null);
     setDetections([]);
     setTimelineSigmaOnly(false);
+    setTimelineState("loading");
     setTab("timeline");
   }, [selectedSource]);
 
@@ -347,24 +376,6 @@ export default function CaseDetailPage() {
     return () => clearInterval(t);
   }, [job, load]);
 
-  useEffect(() => {
-    if (!sourceInfoOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSourceInfoOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [sourceInfoOpen]);
-
-  useEffect(() => {
-    if (!ingestHistoryOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIngestHistoryOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [ingestHistoryOpen]);
-
   const openIngestHistory = async () => {
     if (!caseId) return;
     setIngestHistoryOpen(true);
@@ -385,7 +396,7 @@ export default function CaseDetailPage() {
     if (!file || !caseId) return;
     setUploading(true);
     setUploadFileName(file.name);
-    setError(null);
+    setUploadError(null);
     try {
       const j = await api.uploadEvidence(
         caseId,
@@ -397,7 +408,7 @@ export default function CaseDetailPage() {
       setSelectedSource(j.evidence_source_id);
       load({ selectSourceId: j.evidence_source_id });
     } catch (err) {
-      setError(String(err));
+      setUploadError(String(err));
       setUploadFileName(null);
     } finally {
       setUploading(false);
@@ -492,7 +503,18 @@ export default function CaseDetailPage() {
           <p className="panel-desc">
             Upload a ZIP archive or individual files — EVTX logs, $MFT, registry hives, Chromium profiles, CSV exports, and more.
           </p>
-          <div className="upload-zone">
+          {loadError && (
+            <p className="panel-desc">Evidence controls are unavailable until case data loads.</p>
+          )}
+          {uploadError && (
+            <div className="alert alert-error">
+              {uploadError}
+              <button type="button" className="secondary" onClick={() => setUploadError(null)}>
+                Try another file
+              </button>
+            </div>
+          )}
+          {!loadError && !uploadError && <div className="upload-zone">
             <div
               className={`upload-drop-hint${dragActive ? " is-dragover" : ""}${(uploading || isActiveJob(job)) ? " is-disabled" : ""}`}
               role="button"
@@ -566,11 +588,13 @@ export default function CaseDetailPage() {
                 disabled={uploading || isActiveJob(job)}
               />
             </div>
-          </div>
+          </div>}
           {job && !uploading && (
             <div className="ingest-status-compact">
               <div className="job-status-line">
-                <span className={`status-badge ${job.status}`}>{job.status}</span>
+                <span className={`status-badge ${jobDisplayStatus(job).status}`}>
+                  {jobDisplayStatus(job).label}
+                </span>
                 <span>{job.progress}%</span>
               </div>
               {job.message && (
@@ -761,7 +785,9 @@ export default function CaseDetailPage() {
                       ] satisfies readonly [StatPivot, number, string, string][])
                     : []),
                 ] satisfies readonly [StatPivot, number, string, string][]
-              ).map(([target, count, label, hint]) => (
+              )
+                .filter(([target]) => timelineState !== "error" || target !== "events")
+                .map(([target, count, label, hint]) => (
                 <button
                   key={target}
                   type="button"
@@ -788,7 +814,7 @@ export default function CaseDetailPage() {
       </aside>
 
       <div className="case-main animate-in animate-in-delay-2">
-        {error && <div className="alert alert-error">{error}</div>}
+        {(loadError || error) && <div className="alert alert-error">{loadError || error}</div>}
 
         {showIngestStatus && (
           <IngestStatusPanel
@@ -810,14 +836,14 @@ export default function CaseDetailPage() {
                       {sourcePlatformLabel(selectedSourceData.platform)} endpoint evidence ready for triage.
                     </p>
                   </div>
-                  <span className={`summary-severity summary-severity-${topSeverity(detections)}`}>
-                    {detections.length ? topSeverity(detections) : "clear"}
+                  <span className={`summary-severity summary-severity-${detections.length ? topSeverity(detections) : "none"}`}>
+                    {detections.length ? topSeverity(detections) : "No detections"}
                   </span>
                 </div>
                 <div className="summary-kpis">
-                  <div><strong>{formatCompactStat(stats.timeline_count)}</strong><span>Events Processed</span></div>
-                  <div><strong>{detections.length.toLocaleString()}</strong><span>Detection Rules</span></div>
-                  <div><strong>{detections.filter((d) => d.level === "critical").length.toLocaleString()}</strong><span>Critical Findings</span></div>
+                  <div><strong>{timelineState === "error" ? "—" : formatCompactStat(stats.timeline_count)}</strong><span>Timeline events</span></div>
+                  <div><strong>{detections.length.toLocaleString()}</strong><span>Detections</span></div>
+                  <div><strong>{detections.filter((d) => d.level === "critical").length.toLocaleString()}</strong><span>Critical detections</span></div>
                 </div>
                 <div className="summary-insights">
                   <div>
@@ -892,6 +918,7 @@ export default function CaseDetailPage() {
                 eventTypes={stats?.event_types ?? []}
                 sigmaOnly={timelineSigmaOnly}
                 onSigmaOnlyChange={setTimelineSigmaOnly}
+                onLoadStateChange={setTimelineState}
                 onEntityClick={(entity) => {
                   setTimelineSigmaOnly(false);
                   setTab("object");
@@ -927,18 +954,19 @@ export default function CaseDetailPage() {
           </div>
         ) : null}
       </div>
-      {sourceInfoOpen && sourceInfo && (
-        <div className="modal-backdrop" onClick={() => setSourceInfoOpen(false)}>
+      {sourceInfoOpen && sourceInfo && createPortal(
+        <div className="modal-backdrop" onClick={closeSourceInfo}>
           <div
+            ref={sourceInfoDialogRef}
             className="modal-card"
             role="dialog"
             aria-modal="true"
-            aria-label="Evidence source details"
+            aria-labelledby={sourceInfoTitleId}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-head">
-              <h2>Evidence source details</h2>
-              <button type="button" className="ghost" onClick={() => setSourceInfoOpen(false)}>Close</button>
+              <h2 id={sourceInfoTitleId}>Evidence source details</h2>
+              <button type="button" className="ghost" onClick={closeSourceInfo}>Close</button>
             </div>
             <dl className="manifest-meta modal-meta">
               <dt>Hostname</dt>
@@ -977,21 +1005,23 @@ export default function CaseDetailPage() {
               <dd>{sourceInfoHash ? sourceInfoHash.hashed_files_in_db.toLocaleString() : "n/a"}</dd>
             </dl>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-      {ingestHistoryOpen && (
-        <div className="modal-backdrop" onClick={() => setIngestHistoryOpen(false)}>
+      {ingestHistoryOpen && createPortal(
+        <div className="modal-backdrop" onClick={closeIngestHistory}>
           <div
+            ref={ingestHistoryDialogRef}
             className="modal-card"
             role="dialog"
             aria-modal="true"
-            aria-label="Ingest history"
+            aria-labelledby={ingestHistoryTitleId}
             onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: "64rem" }}
           >
             <div className="modal-head">
-              <h2>Ingest history</h2>
-              <button type="button" className="ghost" onClick={() => setIngestHistoryOpen(false)}>Close</button>
+              <h2 id={ingestHistoryTitleId}>Ingest history</h2>
+              <button type="button" className="ghost" onClick={closeIngestHistory}>Close</button>
             </div>
             {ingestHistoryLoading ? (
               <p className="panel-desc" style={{ marginTop: 0 }}>Loading history…</p>
@@ -1014,9 +1044,10 @@ export default function CaseDetailPage() {
                         <p className="panel-desc" style={{ margin: "0.75rem 0 0" }}>No ingest jobs recorded.</p>
                       ) : (
                         <ul className="job-history-list" style={{ marginTop: "0.75rem" }}>
-                          {jobs.slice(0, 20).map((j) => (
-                            <li key={j.id} className="job-history-item">
-                              <span className={`status-badge ${j.status}`}>{j.status}</span>
+                          {jobs.slice(0, 20).map((j) => {
+                            const displayStatus = jobDisplayStatus(j);
+                            return <li key={j.id} className="job-history-item">
+                              <span className={`status-badge ${displayStatus.status}`}>{displayStatus.label}</span>
                               <span className="mono job-history-msg">
                                 <ul style={{ margin: 0, paddingLeft: "1rem" }}>
                                   {formatIngestHistoryMessage(j.message).map((line) => (
@@ -1029,8 +1060,8 @@ export default function CaseDetailPage() {
                                   ? new Date(j.finished_at).toLocaleString()
                                   : new Date(j.created_at).toLocaleString()}
                               </span>
-                            </li>
-                          ))}
+                            </li>;
+                          })}
                         </ul>
                       )}
                     </section>
@@ -1039,7 +1070,8 @@ export default function CaseDetailPage() {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
             <ConfirmDialog

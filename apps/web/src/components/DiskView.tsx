@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, FileHashes, FilePreview, FilesystemNode } from "../api/client";
+import { useRowNavigation } from "../hooks/useRowNavigation";
 import ResizableSplit from "./ResizableSplit";
 import ConfirmDialog from "./ConfirmDialog";
 
@@ -89,7 +90,7 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
       .finally(() => setFileHashesLoading(false));
   }, [caseId, sourceId, selected, previewOffset]);
 
-  const handleRowClick = (n: FilesystemNode) => {
+  const handleRowClick = useCallback((n: FilesystemNode) => {
     setSelected(n);
     setPreview(null);
     setFileHashes(null);
@@ -99,7 +100,12 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
       setPath(n.full_path);
       setSearch("");
     }
-  };
+  }, []);
+
+  const rows = useRowNavigation<HTMLTableSectionElement>({
+    count: nodes.length,
+    onActivate: useCallback((index) => handleRowClick(nodes[index]), [handleRowClick, nodes]),
+  });
 
   return (
     <div className="animate-in animate-in-delay-3">
@@ -151,16 +157,18 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Size</th>
-                  <th>Path</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Size</th>
+                  <th scope="col">Path</th>
                 </tr>
               </thead>
-              <tbody>
-                {nodes.map((n) => (
+              <tbody ref={rows.containerRef} onKeyDown={rows.onKeyDown}>
+                {nodes.map((n, index) => (
                   <tr
                     key={n.id}
                     className={`clickable${selected?.id === n.id ? " disk-row-selected" : ""}`}
+                    aria-current={selected?.id === n.id ? "true" : undefined}
+                    {...rows.rowProps(index)}
                     onClick={() => handleRowClick(n)}
                   >
                     <td>

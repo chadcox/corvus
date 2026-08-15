@@ -50,6 +50,7 @@ type MockOptions = {
   timelineTotal?: number;
   /** Count/rows returned when the request carries a `q` search term. */
   timelineFilteredTotal?: number;
+  collectionRows?: number;
   onTimelineRequest?: (params: {
     limit: number;
     offset: number;
@@ -78,6 +79,7 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
     onYaraScan,
     timelineTotal = 1,
     timelineFilteredTotal = timelineTotal,
+    collectionRows = 1,
     onTimelineRequest,
     adminJobs = [],
     sourceStatus = baseSource.status,
@@ -264,32 +266,46 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
       return;
     }
 
+    if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/entities\/[^/]+\/timeline$/.test(path) && method === 'GET') {
+      await json(route, Array.from({ length: collectionRows }, (_, index) => ({
+        id: `77777777-7777-7777-7777-${String(index + 1).padStart(12, '0')}`,
+        evidence_source_id: baseSource.id,
+        timestamp_utc: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+        event_type: 'logon',
+        summary: `Related logon ${index + 1}`,
+        artifact_type: 'evtx',
+        original_source: 'security.evtx',
+        data: {},
+        entity_refs: [],
+        sigma_hits: [],
+      })));
+      return;
+    }
+
     if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/entities/.test(path) && method === 'GET') {
-      await json(route, [
-        {
-          id: '88888888-8888-8888-8888-888888888888',
+      await json(route, Array.from({ length: collectionRows }, (_, index) => ({
+          id: `88888888-8888-8888-8888-${String(index + 1).padStart(12, '0')}`,
           evidence_source_id: baseSource.id,
           entity_type: 'user',
-          display_name: 'analyst1',
-          attributes: { sid: 'S-1-5-21-test' },
-        },
-      ]);
+          display_name: `analyst${index + 1}`,
+          attributes: { sid: `S-1-5-21-test-${index + 1}` },
+        })));
       return;
     }
 
     if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/filesystem/.test(path) && method === 'GET') {
-      await json(route, [
-        {
-          id: '99999999-9999-9999-9999-999999999999',
+      await json(route, Array.from({ length: collectionRows }, (_, index) => ({
+          id: `99999999-9999-9999-9999-${String(index + 1).padStart(12, '0')}`,
           evidence_source_id: baseSource.id,
-          full_path: '/Users/analyst1/AppData/Local/Temp',
-          name: 'Temp',
-          is_directory: true,
-          size: null,
+          full_path: collectionRows === 1
+            ? '/Users/analyst1/AppData/Local/Temp'
+            : `/Users/analyst1/AppData/Local/file-${index + 1}.log`,
+          name: collectionRows === 1 ? 'Temp' : `file-${index + 1}.log`,
+          is_directory: collectionRows === 1,
+          size: collectionRows === 1 ? null : 1024 + index,
           is_deleted: false,
           parent_path: '/Users/analyst1/AppData/Local',
-        },
-      ]);
+        })));
       return;
     }
 

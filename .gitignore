@@ -65,3 +65,6 @@ docs/PLANNED_IMPROVEMENTS_WORKFLOW.md
 APPLICATION_AUDIT.md
 AGENTS.md
 .impeccable/
+
+# Local design remediation notes
+docs/design-remediation/

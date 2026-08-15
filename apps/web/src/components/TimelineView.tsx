@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { api, Entity, TimelineEvent, TimelineHistogram } from "../api/client";
+import { useRowNavigation } from "../hooks/useRowNavigation";
 import { SigmaEventBadges } from "./SigmaFindingsPanel";
 import TimelineChart from "./TimelineChart";
 import { formatEventTypeLabel } from "../utils/eventCodes";
@@ -48,7 +49,14 @@ type Props = {
   viewTitle?: string;
   viewDescription?: string;
   onEntityClick?: (entity: Entity) => void;
+  onLoadStateChange?: (state: ViewState["kind"]) => void;
 };
+
+type ViewState =
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "empty" }
+  | { kind: "ready" };
 
 function valueText(value: unknown): string {
   if (value == null) return "";
@@ -118,6 +126,7 @@ export default function TimelineView({
   viewTitle,
   viewDescription,
   onEntityClick,
+  onLoadStateChange,
 }: Props) {
   const [splitPct, setSplitPct] = useState(62);
   const [eventsByIndex, setEventsByIndex] = useState<Record<number, TimelineEvent>>({});
@@ -129,7 +138,8 @@ export default function TimelineView({
   const [selected, setSelected] = useState<TimelineEvent | null>(null);
   const [rowDensity, setRowDensity] = useState<RowDensity>("analyst");
   const [linkedEntities, setLinkedEntities] = useState<Entity[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [viewState, setViewState] = useState<ViewState>({ kind: "loading" });
+  const [retryVersion, setRetryVersion] = useState(0);
   const [loadingPageCount, setLoadingPageCount] = useState(0);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [pagingError, setPagingError] = useState<string | null>(null);
@@ -142,6 +152,8 @@ export default function TimelineView({
   const queryVersionRef = useRef(0);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
+  const eventsByIndexRef = useRef(eventsByIndex);
+  eventsByIndexRef.current = eventsByIndex;
   const loadedCount = useMemo(() => Object.keys(eventsByIndex).length, [eventsByIndex]);
   const eventTypeProviderHints = useMemo(() => {
     const hints = new Map<string, { provider?: string; channel?: string; mixed: boolean }>();
@@ -160,6 +172,7 @@ export default function TimelineView({
     return hints;
   }, [eventsByIndex]);
   const rowCount = totalCount ?? loadedCount;
+  const loading = viewState.kind === "loading";
   const loadingMore = loadingPageCount > 0;
 
   const virtualizer = useVirtualizer({
@@ -169,6 +182,17 @@ export default function TimelineView({
     overscan: 12,
   });
   const virtualItems = virtualizer.getVirtualItems();
+  const rows = useRowNavigation<HTMLUListElement>({
+    count: rowCount,
+    onActivate: useCallback((index) => {
+      const event = eventsByIndexRef.current[index];
+      if (event) setSelected(event);
+    }, []),
+    scrollToIndex: useCallback(
+      (index) => virtualizer.scrollToIndex(index, { align: "auto" }),
+      [virtualizer]
+    ),
+  });
   const lastPageOffset = useMemo(() => {
     if (totalCount == null || totalCount <= 0) return null;
     return Math.floor((totalCount - 1) / PAGE_SIZE) * PAGE_SIZE;
@@ -177,6 +201,10 @@ export default function TimelineView({
   useEffect(() => {
     setSigmaOnly(sigmaOnlyProp);
   }, [sigmaOnlyProp, sourceId]);
+
+  useEffect(() => {
+    onLoadStateChange?.(viewState.kind);
+  }, [onLoadStateChange, viewState.kind]);
 
   const setSigmaOnlyFiltered = (value: boolean) => {
     setSigmaOnly(value);
@@ -236,7 +264,7 @@ export default function TimelineView({
     queryVersionRef.current = version;
     loadedPagesRef.current = new Set();
     loadingPagesRef.current = new Set();
-    setLoading(true);
+    setViewState({ kind: "loading" });
     setEventsByIndex({});
     setTotalCount(null);
     setLoadingPageCount(0);
@@ -258,7 +286,9 @@ export default function TimelineView({
         setEventsByIndex(
           Object.fromEntries(list.map((event, index) => [index, event]))
         );
-        setTotalCount(count ?? list.length);
+        const resolvedCount = count ?? list.length;
+        setTotalCount(resolvedCount);
+        setViewState({ kind: resolvedCount === 0 ? "empty" : "ready" });
         setPagingError(null);
         if (focusEvent && !q && !eventType && !artifactType && !start && !end) {
           const hit = list.find((e) => e.id === focusEvent.id);
@@ -269,12 +299,9 @@ export default function TimelineView({
         if (version !== queryVersionRef.current) return;
         setEventsByIndex({});
         setTotalCount(0);
-        setPagingError("Failed to load timeline events.");
-      })
-      .finally(() => {
-        if (version === queryVersionRef.current) setLoading(false);
+        setViewState({ kind: "error", message: "Failed to load timeline events." });
       });
-  }, [caseId, sourceId, filterOpts, focusEvent, q, eventType, artifactType, start, end]);
+  }, [caseId, sourceId, filterOpts, focusEvent, q, eventType, artifactType, start, end, retryVersion]);
 
   const fetchPage = useCallback((offset: number) => {
     if (offset < 0) return;
@@ -353,6 +380,7 @@ export default function TimelineView({
     if (!focusEvent) return;
     const hit = Object.entries(eventsByIndex).find(([, event]) => event.id === focusEvent.id);
     const idx = hit ? Number(hit[0]) : -1;
+    if (idx >= 0) rows.setActiveIndex(idx);
     const frame = requestAnimationFrame(() => {
       panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       if (idx >= 0) {
@@ -360,7 +388,7 @@ export default function TimelineView({
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [focusEvent?.id, eventsByIndex, virtualizer]);
+  }, [focusEvent?.id, eventsByIndex, rows.setActiveIndex, virtualizer]);
 
   useEffect(() => {
     if (!selected?.entity_refs?.length) {
@@ -519,7 +547,7 @@ export default function TimelineView({
           </div>
         </div>
 
-        {histogram && histogram.buckets.length > 0 && (
+        {viewState.kind === "ready" && histogram && histogram.buckets.length > 0 && (
           <div className="timeline-distribution">
             <div className="timeline-zoom-controls" aria-label="Timeline zoom">
               <span className="timeline-zoom-label">Zoom</span>
@@ -539,8 +567,16 @@ export default function TimelineView({
           </div>
         )}
 
-        {loading && <p className="loading-text">Loading events…</p>}
-        {!loading && rowCount === 0 && (
+        {viewState.kind === "loading" && <p className="loading-text">Loading events…</p>}
+        {viewState.kind === "error" && (
+          <div className="detail-empty" role="alert">
+            <p>{viewState.message}</p>
+            <button type="button" className="secondary" onClick={() => setRetryVersion((value) => value + 1)}>
+              Retry
+            </button>
+          </div>
+        )}
+        {viewState.kind === "empty" && (
           <div className="detail-empty">
             {mftOnly
               ? "No MFT records for this source — upload an $MFT export or a package that includes one."
@@ -551,10 +587,14 @@ export default function TimelineView({
                   : "No events yet — ingest may still be running."}
           </div>
         )}
-        {!loading && rowCount > 0 && (
+        {viewState.kind === "ready" && (
           <div ref={parentRef} className="virtual-list-container">
             <ul
               className="item-list virtual-list"
+              role="listbox"
+              aria-label="Timeline events"
+              ref={rows.containerRef}
+              onKeyDown={rows.onKeyDown}
               style={{ height: `${virtualizer.getTotalSize()}px` }}
             >
               {virtualItems.map((virtualItem) => {
@@ -562,10 +602,13 @@ export default function TimelineView({
                 if (!ev) {
                   return (
                     <li
-                      key={`timeline-placeholder-${virtualItem.index}`}
+                      key={`timeline-row-${virtualItem.index}`}
                       ref={virtualizer.measureElement}
                       data-index={virtualItem.index}
                       className="item-list-row timeline-placeholder-row"
+                      role="option"
+                      aria-selected={false}
+                      {...rows.rowProps(virtualItem.index)}
                       style={{
                         position: "absolute",
                         top: 0,
@@ -583,10 +626,13 @@ export default function TimelineView({
                 const isSelected = selected?.id === ev.id;
                 return (
                   <li
-                    key={ev.id}
+                    key={`timeline-row-${virtualItem.index}`}
                     ref={virtualizer.measureElement}
                     data-index={virtualItem.index}
                     className={`item-list-row${isSelected ? " selected" : ""}${ev.sigma_hits?.length ? " sigma-hit-row" : ""}`}
+                    role="option"
+                    aria-selected={isSelected}
+                    {...rows.rowProps(virtualItem.index)}
                     style={{
                       position: "absolute",
                       top: 0,
@@ -630,14 +676,14 @@ export default function TimelineView({
             </ul>
           </div>
         )}
-        {!loading && rowCount > 0 && (
+        {viewState.kind === "ready" && (
           <div style={{ marginTop: "0.65rem", textAlign: "center", color: "var(--muted)", fontSize: "0.78rem" }}>
             {loadingMore
               ? "Loading timeline page…"
               : `Loaded ${loadedCount} of ${rowCount} events`}
           </div>
         )}
-        {pagingError && (
+        {viewState.kind === "ready" && pagingError && (
           <p className="panel-desc" style={{ marginTop: "0.5rem", color: "var(--danger)" }}>{pagingError}</p>
         )}
       </div>

@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, Entity, TimelineEvent } from "../api/client";
+import { useRowNavigation } from "../hooks/useRowNavigation";
 import ResizableSplit from "./ResizableSplit";
 
 type Props = {
@@ -23,6 +24,17 @@ export default function ObjectView({
   const [selected, setSelected] = useState<Entity | null>(null);
   const [relatedEvents, setRelatedEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const entityRows = useRowNavigation<HTMLUListElement>({
+    count: entities.length,
+    onActivate: useCallback((index) => setSelected(entities[index]), [entities]),
+  });
+  const relatedRows = useRowNavigation<HTMLUListElement>({
+    count: relatedEvents.length,
+    onActivate: useCallback(
+      (index) => onTimelineClick?.(relatedEvents[index]),
+      [onTimelineClick, relatedEvents]
+    ),
+  });
 
   useEffect(() => {
     if (focusEntity) {
@@ -89,11 +101,20 @@ export default function ObjectView({
           <div className="detail-empty">No entities match your filters.</div>
         )}
         {!loading && entities.length > 0 && (
-          <ul className="item-list">
-            {entities.map((ent) => (
+          <ul
+            className="item-list"
+            role="listbox"
+            aria-label="Entities"
+            ref={entityRows.containerRef}
+            onKeyDown={entityRows.onKeyDown}
+          >
+            {entities.map((ent, index) => (
               <li
                 key={ent.id}
                 className={`item-list-row${selected?.id === ent.id ? " selected" : ""}`}
+                role="option"
+                aria-selected={selected?.id === ent.id}
+                {...entityRows.rowProps(index)}
                 onClick={() => setSelected(ent)}
               >
                 <div className="item-list-meta mono">{ent.entity_type}</div>
@@ -118,11 +139,21 @@ export default function ObjectView({
             {relatedEvents.length > 0 && (
               <div>
                 <p className="detail-section-label">Related timeline ({relatedEvents.length})</p>
-                <ul className="item-list" style={{ maxHeight: "220px" }}>
-                  {relatedEvents.map((ev) => (
+                <ul
+                  className="item-list"
+                  style={{ maxHeight: "220px" }}
+                  role="listbox"
+                  aria-label="Related timeline events"
+                  ref={relatedRows.containerRef}
+                  onKeyDown={relatedRows.onKeyDown}
+                >
+                  {relatedEvents.map((ev, index) => (
                     <li
                       key={ev.id}
                       className="item-list-row"
+                      role="option"
+                      aria-selected={false}
+                      {...relatedRows.rowProps(index)}
                       onClick={() => onTimelineClick?.(ev)}
                       style={{ cursor: onTimelineClick ? "pointer" : "default" }}
                     >

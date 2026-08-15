@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, TimelineEvent, TimelineHistogram } from "../api/client";
+import { useRowNavigation } from "../hooks/useRowNavigation";
 import ResizableSplit from "./ResizableSplit";
 import TimelineChart from "./TimelineChart";
 
@@ -186,6 +187,11 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
     });
   }, [pageEvents, sortCol, sortDir]);
 
+  const rows = useRowNavigation<HTMLTableSectionElement>({
+    count: sorted.length,
+    onActivate: useCallback((index) => setSelected(sorted[index]), [sorted]),
+  });
+
   const handleBucketClick = (start: string, end: string) => {
     setStartFilter(start.slice(0, 16));
     setEndFilter(end.slice(0, 16));
@@ -203,7 +209,7 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
     : pageEvents.length === SERVER_PAGE_SIZE;
 
   const SortTh = ({ col, rCol, children }: { col: SortCol; rCol: keyof ColWidths; children: string }) => (
-    <th style={{ position: "relative" }}>
+    <th scope="col" style={{ position: "relative" }}>
       <button
         type="button"
         className="sort-header"
@@ -289,18 +295,20 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
                       <SortTh col="a" rCol="a">A (Access)</SortTh>
                       <SortTh col="c" rCol="c">C (Change)</SortTh>
                       <SortTh col="size" rCol="size">Size</SortTh>
-                      <th title="Deleted" style={{ position: "relative" }}>Del
+                      <th scope="col" title="Deleted" style={{ position: "relative" }}>Del
                         <div className="col-resize-handle" onMouseDown={(e) => startResize("del", e)} />
                       </th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {sorted.map((ev) => {
+                  <tbody ref={rows.containerRef} onKeyDown={rows.onKeyDown}>
+                    {sorted.map((ev, index) => {
                       const deleted = String(ev.data.InUse ?? "true").toLowerCase() !== "true";
                       return (
                         <tr
                           key={ev.id}
                           className={`mft-row${selected?.id === ev.id ? " selected" : ""}${deleted ? " mft-row-deleted" : ""}`}
+                          aria-current={selected?.id === ev.id ? "true" : undefined}
+                          {...rows.rowProps(index)}
                           onClick={() => setSelected(ev)}
                         >
                           <td className="mft-path-cell" title={mftPath(ev)}>
@@ -360,9 +368,9 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
               <table className="mft-detail-macb">
                 <thead>
                   <tr>
-                    <th></th>
-                    <th>$STANDARD_INFO</th>
-                    <th>$FILE_NAME</th>
+                    <th scope="col"></th>
+                    <th scope="col">$STANDARD_INFO</th>
+                    <th scope="col">$FILE_NAME</th>
                   </tr>
                 </thead>
                 <tbody>

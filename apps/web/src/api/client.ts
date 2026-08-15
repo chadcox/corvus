@@ -321,9 +321,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const target = API_BASE || window.location.origin;
     throw new Error(
       msg === "Failed to fetch"
-        ? `Cannot reach API at ${API_BASE}. Is the stack running?`
+        ? `Cannot reach API at ${target}. Is the stack running?`
         : msg
     );
   }

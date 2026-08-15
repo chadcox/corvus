@@ -32,6 +32,18 @@ site. The installed tools listed above have upstream MIT license files copied
 from their public source repositories. If the default tool list changes, add
 the matching upstream license file before distributing a rebuilt image.
 
+## Web Fonts
+
+| Family | How it is included | Upstream | License |
+| --- | --- | --- | --- |
+| Syne | `@fontsource/syne` WOFF2 assets bundled by Vite | https://github.com/bonjourmonde/syne-typeface | SIL Open Font License 1.1 |
+| Libre Franklin | `@fontsource/libre-franklin` WOFF2 assets bundled by Vite | https://github.com/impallari/Libre-Franklin | SIL Open Font License 1.1 |
+| Red Hat Mono | `@fontsource/red-hat-mono` WOFF2 assets bundled by Vite | https://github.com/RedHatOfficial/RedHatFont | SIL Open Font License 1.1 |
+
+Only the weights used by the interface are imported: Syne 600/700/800,
+Libre Franklin 400/500/600, and Red Hat Mono 400/500. The web runtime makes
+no font CDN requests.
+
 ## Optional Tools
 
 `scripts/install-open-forensics.sh` can optionally install additional parsers.
