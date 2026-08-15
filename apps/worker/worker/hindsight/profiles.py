@@ -15,6 +15,19 @@ _PROFILE_MARKER_FILES = ("History", "Cookies", "Web Data", "Login Data")
 _BROWSER_ROOT_DIR_NAMES = ("User Data", "Opera Stable")
 
 
+def _profile_sort_key(path: Path) -> tuple[str, str]:
+    """Total order over profile paths, case-insensitive first.
+
+    Case folding alone is not a total order: on a case-sensitive collection,
+    ``Profile`` and ``profile`` are distinct profiles that compare equal, and
+    Python's stable sort would then fall back to filesystem traversal order.
+    That would make the capped subset depend on extraction order, so the exact
+    path breaks the tie.
+    """
+    text = str(path)
+    return (text.casefold(), text)
+
+
 def find_browser_profiles(package_dir: Path) -> list[Path]:
     """Return unique Chromium profile directories to hand to Hindsight.
 
@@ -34,7 +47,7 @@ def find_browser_profiles(package_dir: Path) -> list[Path]:
                 profile_dir = profile_dir.parent
             found[str(profile_dir.resolve())] = profile_dir
 
-    return sorted(found.values(), key=lambda p: str(p).lower())
+    return sorted(found.values(), key=_profile_sort_key)
 
 
 def select_browser_profiles(
@@ -48,15 +61,18 @@ def select_browser_profiles(
     omission is visible in the job message and the package is retained for a
     re-ingest with a higher limit instead of being deleted.
 
-    Selection is the lowest-sorted profiles, matching the deterministic order
-    ``find_browser_profiles`` returns, so the same package always yields the
-    same subset. A non-positive limit is clamped to one profile rather than
-    silently disabling browser parsing (``HINDSIGHT_ENABLED=false`` does that).
+    Selection is the lowest-sorted profiles under ``_profile_sort_key``, the
+    same total order ``find_browser_profiles`` returns. Because that order is
+    total — case-insensitive first, exact path as tie-break — the same package
+    yields the same subset no matter what order discovery or extraction
+    presented the profiles in. A non-positive limit is clamped to one profile
+    rather than silently disabling browser parsing (``HINDSIGHT_ENABLED=false``
+    does that).
     The note carries counts only, never collected paths or profile names, since
     those come from the evidence under investigation, and no semicolon, which
     the UI treats as a message separator.
     """
-    ordered = sorted(profiles, key=lambda p: str(p).lower())
+    ordered = sorted(profiles, key=_profile_sort_key)
     effective = max(1, limit)
     if len(ordered) <= effective:
         return ordered, None

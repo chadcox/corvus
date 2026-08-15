@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 
 from worker.config import settings
-from worker.hindsight.profiles import select_browser_profiles
+from worker.hindsight.profiles import find_browser_profiles, select_browser_profiles
 from worker.hindsight.runner import HindsightRun
 from worker.kape import ingest as kape_ingest
 from worker.parsers.csv_events import is_partial_parse_note
@@ -109,6 +109,26 @@ def test_selection_is_deterministic_and_takes_the_lowest_sorted_profiles(tmp_pat
     assert profiles[-1] not in selected
 
 
+def test_case_colliding_profiles_select_the_same_subset_in_any_order(tmp_path):
+    """Case-only differences must not hand the choice to traversal order.
+
+    A case-sensitive collection can hold both ``Profile`` and ``profile``. Under
+    a case-folding-only sort they compare equal, so the stable sort would keep
+    whichever order discovery happened to produce and the capped subset would
+    change between extractions of the same package.
+    """
+    base = tmp_path / "Chrome" / "User Data"
+    collided = [base / "Default", base / "Profile", base / "profile"]
+
+    selected, note = select_browser_profiles(list(reversed(collided)), 2)
+
+    # Exact subset: "Default" sorts first, then the tie between "Profile" and
+    # "profile" is broken by the exact path, so "profile" is the one omitted.
+    assert selected == [base / "Default", base / "Profile"]
+    assert selected == select_browser_profiles(collided, 2)[0]
+    assert is_partial_parse_note(note)
+
+
 def test_nonpositive_limit_is_clamped_to_one_profile(tmp_path):
     profiles = _profile_paths(tmp_path)
 
@@ -136,6 +156,33 @@ def test_note_leaks_no_collected_paths_and_no_message_separator(tmp_path):
 
 def test_empty_profile_list_selects_nothing_without_a_note():
     assert select_browser_profiles([], 8) == ([], None)
+
+
+def _is_case_sensitive(root: Path) -> bool:
+    """Whether ``root``'s filesystem can hold ``Profile`` and ``profile``."""
+    probe = root / "_case_probe"
+    probe.mkdir()
+    sensitive = not (root / "_CASE_PROBE").exists()
+    probe.rmdir()
+    return sensitive
+
+
+def test_discovery_order_does_not_depend_on_creation_order(tmp_path):
+    """Two identical packages built in opposite order discover identically."""
+    if not _is_case_sensitive(tmp_path):
+        pytest.skip("filesystem is case-insensitive: Profile/profile cannot coexist")
+
+    names = ["Default", "Profile", "profile"]
+    discovered = []
+    for package, order in (("forward", names), ("reverse", list(reversed(names)))):
+        user_data = tmp_path / package / "Chrome" / "User Data"
+        for name in order:
+            (user_data / name).mkdir(parents=True)
+            (user_data / name / "History").write_bytes(b"SQLite format 3\x00")
+        discovered.append([p.name for p in find_browser_profiles(tmp_path / package)])
+
+    assert discovered[0] == ["Default", "Profile", "profile"]
+    assert discovered[0] == discovered[1]
 
 
 # --- ingest integration -----------------------------------------------------
