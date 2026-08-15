@@ -234,7 +234,7 @@ Key environment variables (common defaults in [`.env.example`](.env.example); ad
 | `CHAINSAW_ENABLED` | `true` | Enable Chainsaw EVTX hunting |
 | `CHAINSAW_INCLUDE_SIGMA` | `true` | Use Sigma rules with Chainsaw |
 | `HINDSIGHT_ENABLED` | `true` | Enable Chromium browser forensics |
-| `HINDSIGHT_MAX_PROFILES` | `8` | Max browser profiles to process per package |
+| `HINDSIGHT_MAX_PROFILES` | `8` | Max browser profiles to process per package; extra profiles are skipped and reported as a partial ingest |
 | `HINDSIGHT_TIMEOUT_SECONDS` | `900` | Timeout per Hindsight processing run |
 | `INSTALL_OPEN_FORENSICS` | `false` | Build worker with optional Plaso/mac_apt/Volatility3 tooling |
 | `PLASO_ENABLED` | `true` | Use Plaso adapter when installed |

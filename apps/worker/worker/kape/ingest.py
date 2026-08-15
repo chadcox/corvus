@@ -19,7 +19,7 @@ from worker.eztools.runner import (
     run_recmd,
 )
 from worker.hindsight.parser import parse_hindsight_jsonl
-from worker.hindsight.profiles import find_browser_dirs_without_history
+from worker.hindsight.profiles import find_browser_dirs_without_history, select_browser_profiles
 from worker.hindsight.runner import hindsight_available, output_stem, run_hindsight
 
 
@@ -246,7 +246,13 @@ def ingest_package(
 
     browser_events = 0
     if settings.hindsight_enabled and hindsight_available() and layout.browser_profile_dirs:
-        browser_dirs = layout.browser_profile_dirs[: settings.hindsight_max_profiles]
+        browser_dirs, cap_note = select_browser_profiles(
+            layout.browser_profile_dirs, settings.hindsight_max_profiles
+        )
+        # Recorded before the run so the omission survives regardless of what
+        # the processed profiles yield.
+        if cap_note:
+            ingest_notes.append(cap_note)
         progress(86, f"Running Hindsight on {len(browser_dirs)} Chromium profile(s)")
         browser_errors: list[str] = []
         for profile_dir in browser_dirs:

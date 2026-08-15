@@ -34,6 +34,21 @@ All notable changes to this project are documented here. Format loosely follows
 - `.env.example` no longer ships a working default admin password.
 
 ### Fixed
+- A package holding more Chromium browser profiles than `HINDSIGHT_MAX_PROFILES`
+  (default `8`) no longer drops the extras silently. Ingest still processes only
+  the capped number of profiles, and the selection is unchanged in content but
+  now explicit: the lowest-sorted profile paths, so the same package always
+  yields the same subset. When profiles are left out, the ingest records a
+  `Partial parse:` note giving how many profiles were found, processed, and not
+  parsed, and naming `HINDSIGHT_MAX_PROFILES` as the applied cap. The note
+  carries counts only — no collected paths or profile names — and, like other
+  partial-parse notes, it makes `DELETE_EVIDENCE_AFTER_INGEST=true` keep the
+  package so a re-ingest with a higher limit can parse the rest. Events from the
+  processed profiles are ingested as before, the job still completes, and
+  packages at or under the cap produce no new note. A `HINDSIGHT_MAX_PROFILES`
+  below `1` is treated as `1` rather than skipping all profiles (use
+  `HINDSIGHT_ENABLED=false` for that). No cap note is emitted when Hindsight is
+  disabled or unavailable.
 - MFT path search now covers every record in the source instead of the 500-row
   page loaded in the browser. The timeline `q` filter, when combined with
   `mft_only`, also matches the record's reconstructed path
