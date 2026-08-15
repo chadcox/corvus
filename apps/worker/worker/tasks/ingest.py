@@ -15,8 +15,8 @@ from sqlalchemy import text
 from worker.celery_app import celery_app
 from worker.config import settings
 from worker.db import get_session
-from worker.chainsaw.evaluate import evaluate_chainsaw_hunt
-from worker.chainsaw.hunt import collect_evtx_for_hunt
+from worker.chainsaw.evaluate import evaluate_chainsaw_hunt_with_coverage
+from worker.chainsaw.hunt import collect_evtx_for_hunt_with_count
 from worker.config import settings as worker_settings
 from worker.parsers.csv_events import PARTIAL_PARSE_NOTE_PREFIX, is_partial_parse_note
 from worker.sigma.evaluate import evaluate_sigma_rules
@@ -240,6 +240,15 @@ def validation_mode(manifest: dict | None) -> str | None:
 
 def is_fast_validation_mode(manifest: dict | None) -> bool:
     return validation_mode(manifest) == VALIDATION_MODE_FAST
+
+
+def should_run_chainsaw_detection(
+    *,
+    fast_validation_mode: bool,
+    chainsaw_enabled: bool,
+) -> bool:
+    """Keep coverage reporting scoped to an enabled, non-fast Chainsaw stage."""
+    return chainsaw_enabled and not fast_validation_mode
 
 
 def _timeline_row(ev: dict) -> dict:
@@ -516,10 +525,15 @@ def process_evidence_package(self, job_id: str, source_id: str) -> dict:
             result["timeline_events"] = events
 
         chainsaw_detections: list[dict] = []
-        if not fast_validation_mode and worker_settings.chainsaw_enabled:
+        if should_run_chainsaw_detection(
+            fast_validation_mode=fast_validation_mode,
+            chainsaw_enabled=worker_settings.chainsaw_enabled,
+        ):
             current_stage = "chainsaw"
             stage_start = time.perf_counter()
-            evtx_files = collect_evtx_for_hunt(package_dir)
+            evtx_files, evtx_found_count, evtx_effective_max = (
+                collect_evtx_for_hunt_with_count(package_dir)
+            )
             evtx_count = len(evtx_files)
             hunt_msg = f"Running Chainsaw hunt ({evtx_count} EVTX, parallel"
             if use_chainsaw_sigma:
@@ -527,12 +541,17 @@ def process_evidence_package(self, job_id: str, source_id: str) -> dict:
             else:
                 hunt_msg += ")"
             _update_job(session, jid, progress=88, message=hunt_msg)
-            chainsaw_detections, events = evaluate_chainsaw_hunt(
-                package_dir,
-                events,
-                sid,
-                evtx_files=evtx_files,
+            chainsaw_detections, events, chainsaw_coverage_note = (
+                evaluate_chainsaw_hunt_with_coverage(
+                    events,
+                    sid,
+                    evtx_files=evtx_files,
+                    found_files=evtx_found_count,
+                    effective_max=evtx_effective_max,
+                )
             )
+            if chainsaw_coverage_note:
+                result.setdefault("ingest_notes", []).append(chainsaw_coverage_note)
             _raise_if_cancel_requested(session, jid)
             record_stage("chainsaw", stage_start)
             result["timeline_events"] = events

@@ -9,12 +9,14 @@ from uuid import UUID
 
 from worker.chainsaw.hunt import (
     collect_evtx_for_hunt,
+    detection_coverage_note,
     hit_correlation_keys,
     hit_engine,
     hit_level,
     hit_rule_id,
     hit_title,
     run_chainsaw_hunt_parallel,
+    run_chainsaw_hunt_parallel_with_coverage,
 )
 from worker.sigma.matcher import LEVEL_RANK, normalize_event_fields
 
@@ -84,6 +86,43 @@ def evaluate_chainsaw_hunt(
     hits = run_chainsaw_hunt_parallel(evtx_files)
     if not hits:
         return [], events
+
+    return _evaluate_chainsaw_hits(hits, events, evidence_source_id)
+
+
+def evaluate_chainsaw_hunt_with_coverage(
+    events: list[dict[str, Any]],
+    evidence_source_id: str | UUID,
+    *,
+    evtx_files: list[Path],
+    found_files: int,
+    effective_max: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str | None]:
+    """Evaluate hits and return a count-only note for EVTX that were not hunted."""
+    run = run_chainsaw_hunt_parallel_with_coverage(evtx_files)
+    note = detection_coverage_note(
+        found_files=found_files,
+        selected_files=len(evtx_files),
+        effective_max=effective_max,
+        run=run,
+    )
+    if not run.hits:
+        return [], events, note
+
+    detections, updated_events = _evaluate_chainsaw_hits(
+        run.hits,
+        events,
+        evidence_source_id,
+    )
+    return detections, updated_events, note
+
+
+def _evaluate_chainsaw_hits(
+    hits: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+    evidence_source_id: str | UUID,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Correlate already-collected Chainsaw hits without changing match behavior."""
 
     _, by_key = _build_event_index(events)
     events_by_id = {str(ev.get("id")): ev for ev in events if ev.get("id")}

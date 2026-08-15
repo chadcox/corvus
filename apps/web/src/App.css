@@ -704,12 +704,14 @@ button.stat-card--action.active {
   line-height: 1.45;
 }
 
-.ingest-diagnostics.partial {
+.ingest-diagnostics.partial,
+.ingest-diagnostics.coverage {
   border-color: rgba(245, 158, 11, 0.45);
   background: var(--warn-dim);
 }
 
-.ingest-diagnostics-partial {
+.ingest-diagnostics-partial,
+.ingest-diagnostics-coverage {
   margin: 0.35rem 0 0.5rem;
   color: var(--warn);
   font-size: 0.75rem;
@@ -717,7 +719,8 @@ button.stat-card--action.active {
   line-height: 1.45;
 }
 
-.ingest-diagnostics li.partial {
+.ingest-diagnostics li.partial,
+.ingest-diagnostics li.coverage {
   color: var(--warn);
 }
 

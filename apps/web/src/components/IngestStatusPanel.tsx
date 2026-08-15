@@ -41,9 +41,14 @@ function splitJobMessage(message: string | null | undefined): {
 // Worker prefix for any note meaning "an input was not read in full" — a
 // completed job carrying one of these covered only part of the evidence.
 const PARTIAL_PARSE_PREFIX = "Partial parse:";
+const PARTIAL_DETECTION_COVERAGE_PREFIX = "Partial detection coverage:";
 
 function isPartialNote(note: string): boolean {
   return note.startsWith(PARTIAL_PARSE_PREFIX);
+}
+
+function isPartialDetectionCoverageNote(note: string): boolean {
+  return note.startsWith(PARTIAL_DETECTION_COVERAGE_PREFIX);
 }
 
 export default function IngestStatusPanel({ phase, job, fileName }: Props) {
@@ -54,6 +59,10 @@ export default function IngestStatusPanel({ phase, job, fileName }: Props) {
     (job?.status === "running" && (job.progress ?? 0) < 10);
   const diagnostics = splitJobMessage(job?.message);
   const detailMessage = diagnostics.summary ?? job?.message;
+  const hasPartialParse = diagnostics.notes.some(isPartialNote);
+  const hasPartialDetectionCoverage = diagnostics.notes.some(
+    isPartialDetectionCoverageNote,
+  );
 
   return (
     <div className="panel ingest-status-panel" role="status" aria-live="polite">
@@ -95,20 +104,35 @@ export default function IngestStatusPanel({ phase, job, fileName }: Props) {
 
       {phase === "ingesting" && diagnostics.notes.length > 0 && (
         <div
-          className={`ingest-diagnostics${
-            diagnostics.notes.some(isPartialNote) ? " partial" : ""
+          className={`ingest-diagnostics${hasPartialParse ? " partial" : ""}${
+            hasPartialDetectionCoverage ? " coverage" : ""
           }`}
         >
           <p className="detail-section-label">Ingest diagnostics</p>
-          {diagnostics.notes.some(isPartialNote) && (
+          {hasPartialParse && (
             <p className="ingest-diagnostics-partial">
               Incomplete ingest — at least one input was parsed only in part, so this
               source does not cover all collected evidence.
             </p>
           )}
+          {hasPartialDetectionCoverage && (
+            <p className="ingest-diagnostics-coverage">
+              Incomplete detection coverage — some EVTX files were not hunted. Timeline
+              parsing and detection coverage are reported separately.
+            </p>
+          )}
           <ul>
             {diagnostics.notes.map((note) => (
-              <li key={note} className={isPartialNote(note) ? "partial" : undefined}>
+              <li
+                key={note}
+                className={
+                  isPartialNote(note)
+                    ? "partial"
+                    : isPartialDetectionCoverageNote(note)
+                      ? "coverage"
+                      : undefined
+                }
+              >
                 {note}
               </li>
             ))}
