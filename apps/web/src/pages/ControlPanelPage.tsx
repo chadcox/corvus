@@ -146,8 +146,8 @@ export default function ControlPanelPage({ me }: Props) {
   const diskPct = totalDisk && freeDisk != null && totalDisk > 0 ? ((totalDisk - freeDisk) / totalDisk) * 100 : null;
 
   return (
-    <div className="animate-in">
-      <div className="cases-top-row animate-in animate-in-delay-1">
+    <div>
+      <div className="cases-top-row">
         <div className="cases-hero">
           <p className="section-label">Administration</p>
           <h1 className="page-title">Control Panel</h1>
@@ -160,7 +160,7 @@ export default function ControlPanelPage({ me }: Props) {
         </div>
       </div>
 
-      <div className="panel animate-in animate-in-delay-2" style={{ marginBottom: "1rem" }}>
+      <div className="panel" style={{ marginBottom: "1rem" }}>
         <h2>System overview</h2>
         {!systemStatus && <p className="panel-desc">Loading system metrics…</p>}
         {systemStatus && (
@@ -187,7 +187,7 @@ export default function ControlPanelPage({ me }: Props) {
         )}
       </div>
 
-      <div className="panel animate-in animate-in-delay-2" style={{ marginBottom: "1rem" }}>
+      <div className="panel" style={{ marginBottom: "1rem" }}>
         <h2>Detection rules operations</h2>
         {!rulesStatus && <p className="panel-desc">Loading detection rule status…</p>}
         {rulesStatus && (
@@ -222,7 +222,7 @@ export default function ControlPanelPage({ me }: Props) {
         </div>
       </div>
 
-      <div className="panel animate-in animate-in-delay-2" style={{ marginBottom: "1rem" }}>
+      <div className="panel" style={{ marginBottom: "1rem" }}>
         <h2>Job operations</h2>
         <div style={{ display: "grid", gap: "0.5rem", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", marginBottom: "0.75rem" }}>
           <label style={{ display: "grid", gap: "0.25rem" }}>
@@ -291,7 +291,7 @@ export default function ControlPanelPage({ me }: Props) {
         )}
       </div>
 
-      <div className="panel animate-in animate-in-delay-2" style={{ marginBottom: "1rem" }}>
+      <div className="panel" style={{ marginBottom: "1rem" }}>
         <h2>Container status</h2>
         {containersError && <p className="panel-desc">{friendlyContainerError(containersError)}</p>}
         {!containersError && containers.length === 0 && <p className="panel-desc">No project containers found.</p>}
@@ -338,7 +338,7 @@ export default function ControlPanelPage({ me }: Props) {
         )}
       </div>
 
-      <div className="panel animate-in animate-in-delay-2" style={{ marginBottom: "1rem" }}>
+      <div className="panel" style={{ marginBottom: "1rem" }}>
         <h2>Bulk case delete</h2>
         <p className="panel-desc">Select one or more cases to remove permanently.</p>
         <div style={{ marginBottom: "0.6rem" }}>
@@ -373,7 +373,7 @@ export default function ControlPanelPage({ me }: Props) {
         </button>
       </div>
 
-      <div className="panel animate-in animate-in-delay-2" style={{ marginBottom: "1rem" }}>
+      <div className="panel" style={{ marginBottom: "1rem" }}>
         <h2>Search index maintenance</h2>
         <p className="panel-desc">Rebuild search documents from canonical PostgreSQL/Timescale data.</p>
         <div style={{ display: "grid", gap: "0.6rem", maxWidth: "620px" }}>

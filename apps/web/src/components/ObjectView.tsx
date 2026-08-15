@@ -73,7 +73,7 @@ export default function ObjectView({
   }, [caseId, sourceId, selected]);
 
   return (
-    <div className="animate-in animate-in-delay-3">
+    <div>
       <ResizableSplit
         left={<div className="panel">
         <h2>Entities</h2>

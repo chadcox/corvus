@@ -450,7 +450,7 @@ export default function TimelineView({
   return (
     <div
       ref={panelRef}
-      className="timeline-resizable-grid animate-in animate-in-delay-3"
+      className="timeline-resizable-grid"
       style={{ ["--timeline-left" as string]: `${splitPct}%` }}
     >
       <div className="panel">

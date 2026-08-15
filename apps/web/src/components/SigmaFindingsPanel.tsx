@@ -229,7 +229,7 @@ export default function SigmaFindingsPanel({ caseId, sourceId, detections: exter
                         maxHeight: "20rem",
                         overflow: "auto",
                         padding: "0.6rem",
-                        border: "1px solid var(--line)",
+                        border: "1px solid var(--border)",
                         borderRadius: "0.4rem",
                         background: "rgba(0,0,0,0.2)",
                       }}

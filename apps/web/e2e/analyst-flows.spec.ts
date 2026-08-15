@@ -435,7 +435,6 @@ test('bundled font faces load without third-party requests', async ({ page }) =>
   await gotoApp(page, '/');
   const loaded = await page.evaluate(async () => {
     const expected = [
-      ['Syne', '600'], ['Syne', '700'], ['Syne', '800'],
       ['Libre Franklin', '400'], ['Libre Franklin', '500'], ['Libre Franklin', '600'],
       ['Red Hat Mono', '400'], ['Red Hat Mono', '500'],
     ] as const;
@@ -444,7 +443,7 @@ test('bundled font faces load without third-party requests', async ({ page }) =>
       return { family, weight, count: faces.length, loaded: faces.every((face) => face.status === 'loaded') };
     }));
   });
-  expect(loaded).toHaveLength(8);
+  expect(loaded).toHaveLength(5);
   expect(loaded.every((face) => face.count > 0 && face.loaded)).toBe(true);
 
   const externalFonts = await page.evaluate(() => performance.getEntriesByType('resource')
@@ -494,7 +493,8 @@ test('interactive text contrast and keyboard focus styles meet the P0 floor', as
   await page.getByLabel('Case name').focus();
   await page.keyboard.press('Tab');
   await expect(primary).toBeFocused();
-  await expect(primary).toHaveCSS('box-shadow', /rgb\(96, 165, 250\)/);
+  await expect(primary).toHaveCSS('outline-style', 'solid');
+  await expect(primary).toHaveCSS('outline-color', 'rgb(130, 177, 255)');
 
   await gotoApp(page, `/cases/${baseCase.id}`);
   const statCard = page.locator('.stat-card--action').first();
@@ -510,7 +510,8 @@ test('interactive text contrast and keyboard focus styles meet the P0 floor', as
   await search.click();
   await page.keyboard.press('Tab');
   await expect(activeTab).toBeFocused();
-  await expect(activeTab).toHaveCSS('box-shadow', /rgb\(96, 165, 250\)/);
+  await expect(activeTab).toHaveCSS('outline-style', 'solid');
+  await expect(activeTab).toHaveCSS('outline-color', 'rgb(130, 177, 255)');
 
   await page.keyboard.press('Shift+Tab');
   await expect(search).toBeFocused();

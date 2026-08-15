@@ -202,7 +202,7 @@
 
 .status-item {
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.02);
   padding: 0.65rem 0.75rem;
   min-width: 0;
@@ -451,7 +451,8 @@ button.stat-card--action.active {
   font-size: 0.625rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
+  /* --text-soft, not --muted: keeps the P0 4.5:1 floor on hovered stat cards */
+  color: var(--text-soft);
   margin-top: 0.15rem;
 }
 
@@ -2897,4 +2898,209 @@ tr.browser-row:focus-visible {
   .timeline-splitter {
     display: none;
   }
+}
+
+/* ── Table spec (§13) ──────────────────────────────────────
+   Opt-in classes applied by views in later phases. */
+
+.table-shell {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: auto;
+  min-width: 0;
+}
+
+.data-table--spec {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table--spec thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 30px;
+  padding: 0 10px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.data-table--spec tbody td {
+  height: 28px;
+  padding: 0 10px;
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-table--comfortable tbody td {
+  height: 40px;
+}
+
+.data-table--spec .col-num {
+  text-align: right;
+}
+
+.data-table--spec .col-time {
+  font-family: var(--font-mono);
+  text-align: left;
+}
+
+.data-table--spec tbody tr.clickable {
+  cursor: pointer;
+}
+
+.data-table--spec tbody tr.clickable:hover {
+  background: var(--surface-hover);
+}
+
+.data-table--spec tbody tr.is-selected {
+  background: var(--primary-dim);
+  box-shadow: inset 2px 0 0 var(--primary-border);
+}
+
+.data-table--spec tbody tr:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.sort-indicator {
+  margin-left: 4px;
+  color: var(--primary-bright);
+  font-size: 10px;
+}
+
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  height: 32px;
+  padding: 0 10px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.table-empty td {
+  height: 72px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.table-skeleton-row td {
+  height: 28px;
+}
+
+.skeleton-cell {
+  display: block;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}
+
+/* ── Severity system (§12) ─────────────────────────────── */
+
+.severity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 5px;
+  border: 1px solid currentcolor;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.severity-badge--critical {
+  color: var(--critical);
+  background: var(--critical-dim);
+}
+
+.severity-badge--high {
+  color: var(--high);
+  background: var(--high-dim);
+}
+
+.severity-badge--medium {
+  color: var(--medium);
+  background: var(--medium-dim);
+}
+
+.severity-badge--low {
+  color: var(--low);
+  background: var(--low-dim);
+}
+
+.severity-badge--informational {
+  color: var(--info);
+  background: var(--info-dim);
+}
+
+.severity-row--critical {
+  box-shadow: inset 2px 0 0 var(--critical);
+  background: var(--critical-dim);
+}
+
+.severity-row--high {
+  box-shadow: inset 2px 0 0 var(--high);
+}
+
+.severity-row--medium {
+  box-shadow: inset 2px 0 0 var(--medium);
+}
+
+.severity-row--low {
+  box-shadow: inset 2px 0 0 var(--low);
+}
+
+.severity-row--informational {
+  box-shadow: inset 2px 0 0 var(--info);
+}
+
+/* ── Pivot affordance (§7) ─────────────────────────────── */
+
+.pivot-value {
+  display: inline;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--border-strong);
+}
+
+.pivot-value:hover {
+  color: var(--primary-bright);
+  border-bottom-color: var(--primary-bright);
+}
+
+.pivot-value:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.pivot-value--mono {
+  font-family: var(--font-mono);
 }

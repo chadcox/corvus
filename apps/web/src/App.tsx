@@ -25,7 +25,7 @@ function BrandMark() {
 
 function NotFoundPage() {
   return (
-    <section className="not-found animate-in">
+    <section className="not-found">
       <p className="not-found-code">Error 404</p>
       <h1 className="page-title">That page is not part of this workspace</h1>
       <p className="page-subtitle">

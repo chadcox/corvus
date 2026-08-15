@@ -152,7 +152,7 @@ export default function BrowserView({ caseId, sourceId }: Props) {
   });
 
   return (
-    <div className="animate-in animate-in-delay-3">
+    <div>
       <ResizableSplit
         left={<div className="panel">
         <div className="panel-header">

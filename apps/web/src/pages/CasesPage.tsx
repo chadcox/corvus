@@ -118,8 +118,8 @@ export default function CasesPage() {
   };
 
   return (
-    <div className="animate-in">
-      <div className="cases-top-row animate-in animate-in-delay-1">
+    <div>
+      <div className="cases-top-row">
         <div className="cases-hero">
           <p className="section-label">Digital forensics</p>
           <h1 className="page-title">Cases</h1>
@@ -129,7 +129,7 @@ export default function CasesPage() {
         </div>
       </div>
 
-      <div className="panel animate-in animate-in-delay-2" style={{ marginBottom: "1.25rem" }}>
+      <div className="panel" style={{ marginBottom: "1.25rem" }}>
         <h2>Open new case</h2>
         <p className="panel-desc">Name your investigation, then upload evidence on the case workspace.</p>
         <form onSubmit={onCreate} className="create-case-form">
@@ -145,9 +145,9 @@ export default function CasesPage() {
         </form>
       </div>
 
-      {error && <div className="alert alert-error animate-in">{error}</div>}
+      {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="animate-in animate-in-delay-3">
+      <div>
         <p className="section-label">Active investigations</p>
         {loading && (
           <ul className="cases-grid" aria-busy="true" aria-label="Loading cases">
@@ -206,7 +206,7 @@ export default function CasesPage() {
         )}
       </div>
 
-      <div className="cases-bottom-row animate-in animate-in-delay-3">
+      <div className="cases-bottom-row">
         <div className="panel system-status-panel">
           <h2>System status</h2>
           {!systemStatus && <p className="loading-text">Loading…</p>}

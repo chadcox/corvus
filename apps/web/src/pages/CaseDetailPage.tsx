@@ -463,8 +463,8 @@ export default function CaseDetailPage() {
   if (!caseId) return null;
 
   return (
-    <div className="case-workspace animate-in">
-      <aside className="case-sidebar animate-in animate-in-delay-1">
+    <div className="case-workspace">
+      <aside className="case-sidebar">
         <Link to="/" className="back-link">
           ← All cases
         </Link>
@@ -813,7 +813,7 @@ export default function CaseDetailPage() {
         )}
       </aside>
 
-      <div className="case-main animate-in animate-in-delay-2">
+      <div className="case-main">
         {(loadError || error) && <div className="alert alert-error">{loadError || error}</div>}
 
         {showIngestStatus && (

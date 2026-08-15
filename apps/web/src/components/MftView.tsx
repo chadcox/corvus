@@ -223,7 +223,7 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
   );
 
   return (
-    <div className="mft-workspace animate-in animate-in-delay-3">
+    <div className="mft-workspace">
       {histogram && histogram.buckets.length > 0 && (
         <TimelineChart histogram={histogram} onBucketClick={handleBucketClick} />
       )}

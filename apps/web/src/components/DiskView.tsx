@@ -108,7 +108,7 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
   });
 
   return (
-    <div className="animate-in animate-in-delay-3">
+    <div>
       <ResizableSplit
         className="disk-workspace"
         left={<div className="panel disk-browser-panel">
