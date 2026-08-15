@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from worker.parsers.csv_events import PARTIAL_PARSE_NOTE_PREFIX
+
 # Files that mark a directory as a Chromium profile. History alone is not
 # enough — a profile whose history was cleared may still hold cookies, saved
 # logins, or web data, and skipping it would lose forensically relevant data.
@@ -11,6 +13,19 @@ _PROFILE_MARKER_FILES = ("History", "Cookies", "Web Data", "Login Data")
 
 # Directory names that indicate a Chromium browser data root was collected.
 _BROWSER_ROOT_DIR_NAMES = ("User Data", "Opera Stable")
+
+
+def _profile_sort_key(path: Path) -> tuple[str, str]:
+    """Total order over profile paths, case-insensitive first.
+
+    Case folding alone is not a total order: on a case-sensitive collection,
+    ``Profile`` and ``profile`` are distinct profiles that compare equal, and
+    Python's stable sort would then fall back to filesystem traversal order.
+    That would make the capped subset depend on extraction order, so the exact
+    path breaks the tie.
+    """
+    text = str(path)
+    return (text.casefold(), text)
 
 
 def find_browser_profiles(package_dir: Path) -> list[Path]:
@@ -32,7 +47,44 @@ def find_browser_profiles(package_dir: Path) -> list[Path]:
                 profile_dir = profile_dir.parent
             found[str(profile_dir.resolve())] = profile_dir
 
-    return sorted(found.values(), key=lambda p: str(p).lower())
+    return sorted(found.values(), key=_profile_sort_key)
+
+
+def select_browser_profiles(
+    profiles: list[Path], limit: int
+) -> tuple[list[Path], str | None]:
+    """Apply the per-package Chromium profile ceiling to ``profiles``.
+
+    Hindsight is run once per profile, so an unbounded package could pin the
+    worker for hours; the cap keeps ingest bounded. Returns the profiles to
+    process plus, when profiles were left out, a partial-parse note so the
+    omission is visible in the job message and the package is retained for a
+    re-ingest with a higher limit instead of being deleted.
+
+    Selection is the lowest-sorted profiles under ``_profile_sort_key``, the
+    same total order ``find_browser_profiles`` returns. Because that order is
+    total — case-insensitive first, exact path as tie-break — the same package
+    yields the same subset no matter what order discovery or extraction
+    presented the profiles in. A non-positive limit is clamped to one profile
+    rather than silently disabling browser parsing (``HINDSIGHT_ENABLED=false``
+    does that).
+    The note carries counts only, never collected paths or profile names, since
+    those come from the evidence under investigation, and no semicolon, which
+    the UI treats as a message separator.
+    """
+    ordered = sorted(profiles, key=_profile_sort_key)
+    effective = max(1, limit)
+    if len(ordered) <= effective:
+        return ordered, None
+
+    omitted = len(ordered) - effective
+    note = (
+        f"{PARTIAL_PARSE_NOTE_PREFIX} {len(ordered)} Chromium browser profile(s) found, "
+        f"{effective} processed, {omitted} not parsed. The per-package cap "
+        f"HINDSIGHT_MAX_PROFILES limited this ingest to {effective} profile(s). "
+        f"Raise it and re-ingest the retained package to parse the rest."
+    )
+    return ordered[:effective], note
 
 
 def find_browser_dirs_without_history(package_dir: Path) -> list[Path]:
