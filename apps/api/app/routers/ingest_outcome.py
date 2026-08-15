@@ -4,60 +4,20 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Entity, EvidenceSource, FilesystemNode, IngestJob, SigmaDetection, TimelineEvent
+from app.models import EvidenceSource, IngestJob
 from app.services.ingest_outcome import build_ingest_outcome
+from app.services.source_stats import load_source_stats
 from corvus_core.schemas import IngestOutcomeRead, SourceStats
 
 router = APIRouter(tags=["ingest-outcome"])
 
 
 def _load_stats(db: Session, source_id: UUID) -> SourceStats | None:
-    timeline_count = (
-        db.query(func.count(TimelineEvent.id))
-        .filter(TimelineEvent.evidence_source_id == source_id)
-        .scalar()
-        or 0
-    )
-    filesystem_count = (
-        db.query(func.count(FilesystemNode.id))
-        .filter(FilesystemNode.evidence_source_id == source_id)
-        .scalar()
-        or 0
-    )
-    entity_count = (
-        db.query(func.count(Entity.id))
-        .filter(Entity.evidence_source_id == source_id)
-        .scalar()
-        or 0
-    )
-    sigma_detection_count = (
-        db.query(func.count(SigmaDetection.id))
-        .filter(SigmaDetection.evidence_source_id == source_id)
-        .scalar()
-        or 0
-    )
-    event_types = [
-        row[0]
-        for row in (
-            db.query(distinct(TimelineEvent.event_type))
-            .filter(TimelineEvent.evidence_source_id == source_id)
-            .order_by(TimelineEvent.event_type)
-            .limit(50)
-            .all()
-        )
-        if row[0]
-    ]
-    return SourceStats(
-        timeline_count=timeline_count,
-        filesystem_count=filesystem_count,
-        entity_count=entity_count,
-        sigma_detection_count=sigma_detection_count,
-        event_types=event_types,
-    )
+    """Delegate to the shared loader so /outcome and /stats never diverge."""
+    return load_source_stats(db, source_id)
 
 
 @router.get("/jobs/{job_id}/outcome", response_model=IngestOutcomeRead)

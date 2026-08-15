@@ -11,12 +11,26 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from app.auth.service import get_current_user
+from app.config import settings
 from app.database import get_db
 from app.main import app
 from app.models import Entity, EvidenceSource, FilesystemNode, TimelineEvent
 from app.routers import stats as stats_router
 from app.routers.timeline import _filtered_timeline_query
 from app.search_filters import escape_like, like_contains
+
+
+@pytest.fixture(autouse=True)
+def force_postgres_search(monkeypatch: pytest.MonkeyPatch):
+    """Pin the SQL search path for this module.
+
+    These tests assert on the LIKE patterns the routers hand to SQLAlchemy. When the
+    environment sets SEARCH_BACKEND=opensearch (as docker-compose.yml does for the api
+    container), `opensearch_global_search` short-circuits `/search` before any SQL is
+    built and the assertions see zero patterns. Escaping is a property of the SQL
+    fallback, so force that backend regardless of ambient env.
+    """
+    monkeypatch.setattr(settings, "search_backend", "postgres")
 
 
 @dataclass

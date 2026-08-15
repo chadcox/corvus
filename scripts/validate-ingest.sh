@@ -5,6 +5,10 @@
 #   ./scripts/validate-ingest.sh samples/c.zip
 #   SAMPLE=kape-minimal ./scripts/validate-ingest.sh
 #   ./scripts/validate-ingest.sh --sample kape-minimal
+#
+# Auth: the API requires a bearer token. Credentials come from
+# AUTH_BOOTSTRAP_ADMIN_USERNAME / AUTH_BOOTSTRAP_ADMIN_PASSWORD (read from .env
+# when present), or CORVUS_USER / CORVUS_PASSWORD, or an existing CORVUS_TOKEN.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -56,9 +60,34 @@ echo "API: $API"
 echo "=== Health ==="
 curl -sf "$API/health/ready" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d.get('status')=='ready', d"
 
+echo "=== Auth ==="
+if [ -z "${CORVUS_TOKEN:-}" ]; then
+  if [ -f "$ROOT/.env" ]; then
+    ENV_USER=$(grep -E '^AUTH_BOOTSTRAP_ADMIN_USERNAME=' "$ROOT/.env" | tail -1 | cut -d= -f2-)
+    ENV_PASS=$(grep -E '^AUTH_BOOTSTRAP_ADMIN_PASSWORD=' "$ROOT/.env" | tail -1 | cut -d= -f2-)
+  fi
+  USER_NAME="${CORVUS_USER:-${ENV_USER:-admin}}"
+  PASSWORD="${CORVUS_PASSWORD:-${ENV_PASS:-}}"
+  if [ -z "$PASSWORD" ]; then
+    echo "No credentials: set CORVUS_TOKEN, or CORVUS_USER/CORVUS_PASSWORD, or AUTH_BOOTSTRAP_ADMIN_PASSWORD in .env" >&2
+    exit 1
+  fi
+  LOGIN_BODY=$(python3 -c 'import json,sys; print(json.dumps({"username": sys.argv[1], "password": sys.argv[2]}))' "$USER_NAME" "$PASSWORD")
+  CORVUS_TOKEN=$(curl -sf -X POST "$API/api/v1/auth/login" \
+    -H 'Content-Type: application/json' -d "$LOGIN_BODY" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])") || {
+      echo "Login failed for user '$USER_NAME'" >&2
+      exit 1
+    }
+  echo "Logged in as $USER_NAME"
+else
+  echo "Using CORVUS_TOKEN from environment"
+fi
+AUTH_HEADER="Authorization: Bearer $CORVUS_TOKEN"
+
 if [ "$USE_SAMPLE_API" = "1" ] && [ -n "$SAMPLE" ]; then
   echo "=== Start ingest (sample=$SAMPLE) ==="
-  START=$(curl -sf -X POST "$API/api/v1/validation/ingest-sample?sample=${SAMPLE}&min_filesystem_nodes=${MIN_FS}")
+  START=$(curl -sf -X POST -H "$AUTH_HEADER" "$API/api/v1/validation/ingest-sample?sample=${SAMPLE}&min_filesystem_nodes=${MIN_FS}")
   JOB_ID=$(echo "$START" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
   OUTCOME_PATH=$(echo "$START" | python3 -c "import sys,json; print(json.load(sys.stdin)['outcome_path'])")
   CASE_ID=$(echo "$START" | python3 -c "import sys,json; print(json.load(sys.stdin)['case_id'])")
@@ -78,10 +107,11 @@ else
 
   echo "=== Upload $ZIP ==="
   CASE=$(curl -sf -X POST "$API/api/v1/cases" \
+    -H "$AUTH_HEADER" \
     -H 'Content-Type: application/json' \
     -d "{\"name\":\"validate-ingest $(basename "$ZIP")\"}")
   CASE_ID=$(echo "$CASE" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-  JOB=$(curl -sf -X POST "$API/api/v1/cases/$CASE_ID/evidence/upload" -F "file=@$ZIP")
+  JOB=$(curl -sf -X POST -H "$AUTH_HEADER" "$API/api/v1/cases/$CASE_ID/evidence/upload" -F "file=@$ZIP")
   JOB_ID=$(echo "$JOB" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
   SOURCE_ID=$(echo "$JOB" | python3 -c "import sys,json; print(json.load(sys.stdin)['evidence_source_id'])")
   OUTCOME_PATH="/api/v1/jobs/${JOB_ID}/outcome?min_timeline_events=1&min_filesystem_nodes=${MIN_FS}"
@@ -90,7 +120,7 @@ fi
 echo "=== Poll outcome (max ${MAX_WAIT}s) ==="
 ELAPSED=0
 while [ "$ELAPSED" -lt "$MAX_WAIT" ]; do
-  OUTCOME=$(curl -sf "$API${OUTCOME_PATH}")
+  OUTCOME=$(curl -sf -H "$AUTH_HEADER" "$API${OUTCOME_PATH}")
   echo "$OUTCOME" | python3 -c "
 import sys, json
 o = json.load(sys.stdin)

@@ -3,12 +3,13 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import distinct, func, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Entity, EvidenceSource, FilesystemNode, SigmaDetection, TimelineEvent
+from app.models import EvidenceSource
 from app.search_filters import LIKE_ESCAPE_CHAR, like_contains
+from app.services.source_stats import load_source_stats
 from corvus_core.schemas import SourceStats
 
 router = APIRouter(prefix="/cases/{case_id}/sources/{source_id}/stats", tags=["stats"])
@@ -28,69 +29,7 @@ def get_source_stats(
     if not source:
         raise HTTPException(status_code=404, detail="Evidence source not found")
 
-    timeline_count = (
-        db.query(func.count(TimelineEvent.id))
-        .filter(TimelineEvent.evidence_source_id == source_id)
-        .scalar()
-        or 0
-    )
-    filesystem_count = (
-        db.query(func.count(FilesystemNode.id))
-        .filter(FilesystemNode.evidence_source_id == source_id)
-        .scalar()
-        or 0
-    )
-    entity_count = (
-        db.query(func.count(Entity.id))
-        .filter(Entity.evidence_source_id == source_id)
-        .scalar()
-        or 0
-    )
-    sigma_detection_count = (
-        db.query(func.count(SigmaDetection.id))
-        .filter(SigmaDetection.evidence_source_id == source_id)
-        .scalar()
-        or 0
-    )
-    mft_count = (
-        db.query(func.count(TimelineEvent.id))
-        .filter(
-            TimelineEvent.evidence_source_id == source_id,
-            TimelineEvent.artifact_type == "mft",
-        )
-        .scalar()
-        or 0
-    )
-    browser_count = (
-        db.query(func.count(TimelineEvent.id))
-        .filter(
-            TimelineEvent.evidence_source_id == source_id,
-            TimelineEvent.artifact_type == "browser",
-        )
-        .scalar()
-        or 0
-    )
-    event_types = [
-        row[0]
-        for row in (
-            db.query(distinct(TimelineEvent.event_type))
-            .filter(TimelineEvent.evidence_source_id == source_id)
-            .order_by(TimelineEvent.event_type)
-            .limit(50)
-            .all()
-        )
-        if row[0]
-    ]
-
-    return SourceStats(
-        timeline_count=timeline_count,
-        filesystem_count=filesystem_count,
-        entity_count=entity_count,
-        sigma_detection_count=sigma_detection_count,
-        mft_count=mft_count,
-        browser_count=browser_count,
-        event_types=event_types,
-    )
+    return load_source_stats(db, source_id)
 
 
 @router.get("/histogram")
