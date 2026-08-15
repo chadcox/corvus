@@ -692,6 +692,23 @@ button.stat-card--action.active {
   line-height: 1.45;
 }
 
+.ingest-diagnostics.partial {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: var(--warn-dim);
+}
+
+.ingest-diagnostics-partial {
+  margin: 0.35rem 0 0.5rem;
+  color: var(--warn);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.ingest-diagnostics li.partial {
+  color: var(--warn);
+}
+
 .ingest-status-compact {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
@@ -2474,6 +2491,10 @@ button.stat-card--action.active {
 .mft-count {
   font-size: 0.72rem;
   color: var(--muted);
+}
+
+.mft-scope-note {
+  margin: 0.5rem 0 0;
 }
 
 .mft-table-scroll {

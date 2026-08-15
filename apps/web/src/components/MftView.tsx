@@ -68,14 +68,15 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<TimelineEvent | null>(null);
   const [q, setQ] = useState("");
+  const [appliedQ, setAppliedQ] = useState("");
   const [sortCol, setSortCol] = useState<SortCol>("b");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [serverPage, setServerPage] = useState(0);
+  const [filteredTotal, setFilteredTotal] = useState<number | null>(null);
   const [histogram, setHistogram] = useState<TimelineHistogram | null>(null);
   const [startFilter, setStartFilter] = useState("");
   const [endFilter, setEndFilter] = useState("");
 
-  const totalServerPages = Math.max(1, Math.ceil(mftTotal / SERVER_PAGE_SIZE));
   const [colWidths, setColWidths] = useState<ColWidths>(DEFAULT_WIDTHS);
   const tableRef = useRef<HTMLTableElement | null>(null);
 
@@ -97,27 +98,65 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
     document.addEventListener("mouseup", onUp);
   }, [colWidths]);
 
-  // Fetch when source, page, or time filters change
+  // Search runs server-side over every MFT record in the source, so debounce
+  // keystrokes (same 300ms as global search) before issuing the query.
   useEffect(() => {
+    const next = q.trim();
+    if (next === appliedQ) return;
+    const t = setTimeout(() => {
+      setAppliedQ(next);
+      setServerPage(0);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [q, appliedQ]);
+
+  const startIso = startFilter ? new Date(startFilter).toISOString() : undefined;
+  const endIso = endFilter ? new Date(endFilter).toISOString() : undefined;
+
+  // Fetch when source, page, search, or time filters change. A superseded
+  // request must not paint its rows: a slow response for an earlier term would
+  // otherwise be shown under the newer one.
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setPageEvents([]);
     setSelected(null);
     api
       .listTimeline(caseId, sourceId, {
         mftOnly: true,
+        q: appliedQ || undefined,
         limit: SERVER_PAGE_SIZE,
         offset: serverPage * SERVER_PAGE_SIZE,
-        start: startFilter ? new Date(startFilter).toISOString() : undefined,
-        end: endFilter ? new Date(endFilter).toISOString() : undefined,
+        start: startIso,
+        end: endIso,
       })
-      .then(setPageEvents)
-      .catch(() => setPageEvents([]))
-      .finally(() => setLoading(false));
-  }, [caseId, sourceId, serverPage, startFilter, endFilter]);
+      .then((rows) => { if (!cancelled) setPageEvents(rows); })
+      .catch(() => { if (!cancelled) setPageEvents([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [caseId, sourceId, serverPage, appliedQ, startIso, endIso]);
+
+  // Count uses the same filters as the list so paging reflects every match,
+  // not just the loaded page.
+  useEffect(() => {
+    let cancelled = false;
+    setFilteredTotal(null);
+    api
+      .countTimeline(caseId, sourceId, {
+        mftOnly: true,
+        q: appliedQ || undefined,
+        start: startIso,
+        end: endIso,
+      })
+      .then((r) => { if (!cancelled) setFilteredTotal(r.count); })
+      .catch(() => { if (!cancelled) setFilteredTotal(null); });
+    return () => { cancelled = true; };
+  }, [caseId, sourceId, appliedQ, startIso, endIso]);
 
   // Fetch histogram once per source
   useEffect(() => {
     setQ("");
+    setAppliedQ("");
     setServerPage(0);
     api.getTimelineHistogram(caseId, sourceId, { artifactType: "mft" }).then(setHistogram).catch(() => setHistogram(null));
   }, [caseId, sourceId]);
@@ -134,14 +173,10 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
   const sortIndicator = (col: SortCol) =>
     sortCol !== col ? " ↕" : sortDir === "asc" ? " ↑" : " ↓";
 
-  // Client-side search + sort within the current server page
+  // Sort is client-side and therefore only orders the loaded page; searching and
+  // paging are server-side across the whole source.
   const sorted = useMemo(() => {
-    let rows = pageEvents;
-    if (q.trim()) {
-      const lq = q.trim().toLowerCase();
-      rows = rows.filter((ev) => mftPath(ev).toLowerCase().includes(lq));
-    }
-    return [...rows].sort((a, b) => {
+    return [...pageEvents].sort((a, b) => {
       const av = sortValue(a, sortCol);
       const bv = sortValue(b, sortCol);
       const cmp = typeof av === "number" && typeof bv === "number"
@@ -149,7 +184,7 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
         : String(av).localeCompare(String(bv));
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [pageEvents, q, sortCol, sortDir]);
+  }, [pageEvents, sortCol, sortDir]);
 
   const handleBucketClick = (start: string, end: string) => {
     setStartFilter(start.slice(0, 16));
@@ -158,10 +193,23 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
   };
 
   const hasFilters = Boolean(q || startFilter || endFilter);
+  const isFiltered = Boolean(appliedQ || startFilter || endFilter);
+  // Fall back to the unfiltered source total only when nothing is filtered; an
+  // unavailable count is shown as unknown rather than as a wrong number.
+  const total = filteredTotal ?? (isFiltered ? null : mftTotal || null);
+  const totalServerPages = total != null ? Math.max(1, Math.ceil(total / SERVER_PAGE_SIZE)) : null;
+  const hasNextPage = totalServerPages != null
+    ? serverPage < totalServerPages - 1
+    : pageEvents.length === SERVER_PAGE_SIZE;
 
   const SortTh = ({ col, rCol, children }: { col: SortCol; rCol: keyof ColWidths; children: string }) => (
     <th style={{ position: "relative" }}>
-      <button type="button" className="sort-header" onClick={() => toggleSort(col)}>
+      <button
+        type="button"
+        className="sort-header"
+        title="Sorts the records loaded on this page, not the full result set"
+        onClick={() => toggleSort(col)}
+      >
         {children}{sortIndicator(col)}
       </button>
       <div className="col-resize-handle" onMouseDown={(e) => startResize(rCol, e)} />
@@ -180,14 +228,15 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
           <div className="panel-header">
             <h2>MFT Records</h2>
             <span className="mft-count mono">
-              {mftTotal > 0 ? `${mftTotal.toLocaleString()} total` : `${sorted.length} records`}
-              {q && ` · ${sorted.length} match`}
+              {total != null
+                ? `${total.toLocaleString()} ${appliedQ ? "matching" : "total"}`
+                : `${sorted.length} loaded`}
             </span>
           </div>
 
           <div className="filters-stack">
             <input
-              placeholder="Search file paths…"
+              placeholder="Search all file paths…"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               aria-label="Search MFT paths"
@@ -196,7 +245,13 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
               <button
                 type="button"
                 className="secondary"
-                onClick={() => { setQ(""); setStartFilter(""); setEndFilter(""); setServerPage(0); }}
+                onClick={() => {
+                  setQ("");
+                  setAppliedQ("");
+                  setStartFilter("");
+                  setEndFilter("");
+                  setServerPage(0);
+                }}
               >
                 Clear filters
               </button>
@@ -207,12 +262,18 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
 
           {!loading && pageEvents.length === 0 && (
             <div className="detail-empty">
-              No MFT records — upload a package with $MFT or MFTECmd output.
+              {isFiltered
+                ? "No MFT records match the current filters."
+                : "No MFT records — upload a package with $MFT or MFTECmd output."}
             </div>
           )}
 
           {!loading && pageEvents.length > 0 && (
             <>
+              <p className="mft-count mft-scope-note">
+                Search covers every MFT record in this source. Column sort orders only the{" "}
+                {sorted.length.toLocaleString()} records loaded on this page.
+              </p>
               <div className="mft-table-scroll">
                 <table className="mft-table" ref={tableRef} style={{ tableLayout: "fixed" }}>
                   <colgroup>
@@ -271,13 +332,13 @@ export default function MftView({ caseId, sourceId, mftTotal = 0 }: Props) {
                   ← Prev
                 </button>
                 <span className="mft-page-info mono">
-                  Page {serverPage + 1} of {totalServerPages}
-                  {mftTotal > 0 && ` · ${mftTotal.toLocaleString()} records`}
+                  Page {serverPage + 1} of {totalServerPages ?? "?"}
+                  {total != null && ` · ${total.toLocaleString()} ${appliedQ ? "matching records" : "records"}`}
                 </span>
                 <button
                   type="button"
                   className="secondary"
-                  disabled={serverPage >= totalServerPages - 1}
+                  disabled={!hasNextPage}
                   onClick={() => setServerPage((p) => p + 1)}
                 >
                   Next →

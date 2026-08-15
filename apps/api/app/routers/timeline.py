@@ -41,6 +41,21 @@ BROWSER_CATEGORY_TYPES: dict[str, list[str]] = {
 }
 
 
+def _mft_path_expr():
+    """Full MFT path (``ParentPath`` + ``FileName``) normalized to ``/`` separators.
+
+    MFT rows carry the parsed record in ``data``; their ``summary`` holds only the
+    file name, so searching summary alone misses any term that spans the parent
+    directory. Either component can be absent, so both are coalesced.
+    """
+    joined = func.concat(
+        func.coalesce(TimelineEvent.data["ParentPath"].astext, ""),
+        "/",
+        func.coalesce(TimelineEvent.data["FileName"].astext, ""),
+    )
+    return func.replace(joined, "\\", "/")
+
+
 def _get_source(db: Session, case_id: UUID, source_id: UUID) -> EvidenceSource:
     source = (
         db.query(EvidenceSource)
@@ -85,6 +100,17 @@ def _filtered_timeline_query(
                     TimelineEvent.data["title"].astext.ilike(like, escape=LIKE_ESCAPE_CHAR),
                     TimelineEvent.data["message"].astext.ilike(like, escape=LIKE_ESCAPE_CHAR),
                     TimelineEvent.data["host"].astext.ilike(like, escape=LIKE_ESCAPE_CHAR),
+                )
+            )
+        elif mft_only:
+            # Analysts type paths with either separator; normalize both sides to "/"
+            # before escaping so a backslash in the term is a separator, not a
+            # LIKE escape character.
+            path_like = like_contains(q.replace("\\", "/"))
+            query = query.filter(
+                or_(
+                    TimelineEvent.summary.ilike(like, escape=LIKE_ESCAPE_CHAR),
+                    _mft_path_expr().ilike(path_like, escape=LIKE_ESCAPE_CHAR),
                 )
             )
         else:
@@ -146,7 +172,10 @@ def list_timeline_events(
     end: datetime | None = Query(None),
     event_type: str | None = Query(None),
     artifact_type: str | None = Query(None),
-    q: str | None = Query(None, description="Search summary"),
+    q: str | None = Query(
+        None,
+        description="Search summary; with mft_only also the MFT ParentPath/FileName path",
+    ),
     sigma_only: bool = Query(False, description="Only events with detection rule hits"),
     mft_only: bool = Query(False, description="Only MFT-derived file system records"),
     browser_only: bool = Query(False, description="Only Chromium browser forensics (Hindsight)"),
@@ -182,7 +211,10 @@ def count_timeline_events(
     end: datetime | None = Query(None),
     event_type: str | None = Query(None),
     artifact_type: str | None = Query(None),
-    q: str | None = Query(None, description="Search summary"),
+    q: str | None = Query(
+        None,
+        description="Search summary; with mft_only also the MFT ParentPath/FileName path",
+    ),
     sigma_only: bool = Query(False, description="Only events with detection rule hits"),
     mft_only: bool = Query(False, description="Only MFT-derived file system records"),
     browser_only: bool = Query(False, description="Only Chromium browser forensics (Hindsight)"),

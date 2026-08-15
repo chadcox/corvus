@@ -338,3 +338,36 @@ test('ingest diagnostics keep notes that contain the summary separator', async (
   await expect(notes.nth(0)).toContainText('raw evtx parsing not suppressed');
   await expect(notes.nth(1)).toHaveText(sigmaNote);
 });
+
+test('MFT search queries the whole source and repages on the filtered count', async ({ page }) => {
+  const requests: Array<{ offset: number; q: string | null; mftOnly: boolean }> = [];
+  await installApiMocks(page, {
+    authedInitially: true,
+    timelineTotal: 1200,
+    timelineFilteredTotal: 700,
+    onTimelineRequest: ({ offset, q, mftOnly }) => { requests.push({ offset, q, mftOnly }); },
+  });
+
+  await gotoApp(page, `/cases/${baseCase.id}`);
+  await page.getByRole('button', { name: 'MFT', exact: true }).click();
+
+  const pageInfo = page.locator('.mft-page-info');
+  // Unfiltered paging comes from the source-wide count, not the loaded page.
+  await expect(page.locator('.panel-header .mft-count')).toHaveText('1,200 total');
+  await expect(pageInfo).toContainText('Page 1 of 3');
+
+  await page.getByRole('button', { name: 'Next →' }).click();
+  await expect(pageInfo).toContainText('Page 2 of 3');
+
+  await page.getByLabel('Search MFT paths').fill('Windows\\System32');
+
+  // Search is server-side over every MFT record, so it re-queries from page 1.
+  await expect.poll(() => requests.at(-1)).toMatchObject({
+    offset: 0,
+    q: 'Windows\\System32',
+    mftOnly: true,
+  });
+  await expect(page.locator('.panel-header .mft-count')).toHaveText('700 matching');
+  await expect(pageInfo).toContainText('Page 1 of 2');
+  await expect(page.locator('.mft-scope-note')).toContainText('every MFT record in this source');
+});

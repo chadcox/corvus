@@ -104,6 +104,8 @@ WKS-042_20250528/
 2. Raw artifacts — `.evtx`, registry hives, prefetch, `$MFT`, browser profiles, logs, and other supported artifacts
 3. Collected files — filesystem nodes from paths and timestamps
 
+**Raw Prefetch ceiling:** when a package ships no populated PECmd CSV, raw `.pf` files are parsed one PECmd run each, so `PREFETCH_MAX_FILES` (default `100`) bounds how long that stage can take. Files are selected in package-relative path order, so the same package always yields the same subset. If a package holds more `.pf` files than the ceiling, the ingest job reports how many were found, parsed, and omitted, is shown as an incomplete ingest in the UI, and the evidence package is kept on disk even when `DELETE_EVIDENCE_AFTER_INGEST=true`. Raise the ceiling and re-ingest to cover the rest, at the cost of a longer ingest.
+
 See [docs/EVIDENCE-PACKAGE.md](docs/EVIDENCE-PACKAGE.md) for the full format reference.
 
 ## Investigation Views
@@ -234,8 +236,9 @@ Key environment variables (common defaults in [`.env.example`](.env.example); ad
 | `CHAINSAW_ENABLED` | `true` | Enable Chainsaw EVTX hunting |
 | `CHAINSAW_INCLUDE_SIGMA` | `true` | Use Sigma rules with Chainsaw |
 | `HINDSIGHT_ENABLED` | `true` | Enable Chromium browser forensics |
-| `HINDSIGHT_MAX_PROFILES` | `8` | Max browser profiles to process per package |
+| `HINDSIGHT_MAX_PROFILES` | `8` | Max browser profiles to process per package; extra profiles are skipped and reported as a partial ingest |
 | `HINDSIGHT_TIMEOUT_SECONDS` | `900` | Timeout per Hindsight processing run |
+| `PREFETCH_MAX_FILES` | `100` | Max raw `.pf` files parsed with PECmd per package (see below) |
 | `INSTALL_OPEN_FORENSICS` | `false` | Build worker with optional Plaso/mac_apt/Volatility3 tooling |
 | `PLASO_ENABLED` | `true` | Use Plaso adapter when installed |
 | `PLASO_PARALLEL_ENABLED` | `true` | Split Plaso into targeted parser-family runs and merge outputs |

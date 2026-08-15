@@ -38,6 +38,11 @@ class WorkerSettings(BaseSettings):
     yara_ref: str = "master"
     yara_scan_max_file_bytes: int = 10485760
     yara_scan_max_matches: int = 5000
+    # Raw .pf files handed to PECmd per package when the package ships no
+    # populated PECmd CSV. Each file is a separate dotnet invocation, so the
+    # ceiling bounds ingest wall-clock; going over it is reported as a partial
+    # parse rather than silently dropped.
+    prefetch_max_files: int = 100
     hindsight_enabled: bool = True
     hindsight_bin: str = "/usr/local/bin/hindsight"
     hindsight_max_profiles: int = 8

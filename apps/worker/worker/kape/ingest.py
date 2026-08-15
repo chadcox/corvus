@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from worker.kape.detector import detect_kape_layout
-from worker.parsers.csv_events import parse_csv_to_events
+from worker.parsers.csv_events import PARTIAL_PARSE_NOTE_PREFIX, parse_csv_to_events
 from worker.parsers.entities import extract_entities_from_events
 from worker.parsers.filesystem import build_filesystem_nodes
 from worker.parsers.filesystem_paths import build_filesystem_from_paths
@@ -19,7 +19,7 @@ from worker.eztools.runner import (
     run_recmd,
 )
 from worker.hindsight.parser import parse_hindsight_jsonl
-from worker.hindsight.profiles import find_browser_dirs_without_history
+from worker.hindsight.profiles import find_browser_dirs_without_history, select_browser_profiles
 from worker.hindsight.runner import hindsight_available, output_stem, run_hindsight
 
 
@@ -112,6 +112,55 @@ def _browser_profile_label(profile_dir: Path, package_dir: Path) -> str:
         return str(profile_dir.relative_to(package_dir)).replace("\\", "/")
     except ValueError:
         return profile_dir.name
+
+
+def resolve_prefetch_max_files() -> int:
+    """Configured raw Prefetch ceiling, clamped to a usable value.
+
+    A zero or negative PREFETCH_MAX_FILES would skip Prefetch parsing entirely
+    without ever saying so — the same silent omission this ceiling exists to
+    report — so anything below one file is treated as one.
+    """
+    return max(1, settings.prefetch_max_files)
+
+
+def _package_sort_key(path: Path, package_dir: Path) -> tuple[str, str]:
+    """Package-relative ordering key, independent of filesystem traversal order.
+
+    Paths outside the package (there should be none) fall back to their own
+    string form, which still orders deterministically.
+    """
+    try:
+        relative = str(path.relative_to(package_dir))
+    except ValueError:
+        relative = str(path)
+    normalized = relative.replace("\\", "/")
+    return (normalized.casefold(), normalized)
+
+
+def select_prefetch_inputs(
+    prefetch_files: Sequence[Path], package_dir: Path, limit: int
+) -> tuple[list[Path], str | None]:
+    """Pick which raw .pf files PECmd parses, and say so when some are left out.
+
+    Selection is by package-relative path so the same package always yields the
+    same subset — re-ingesting a package must not silently swap which files were
+    covered. When the package holds more Prefetch files than the ceiling allows,
+    the returned note carries counts only (never a collected path, which is
+    attacker-controlled text) and uses the partial-parse prefix so the ingest is
+    treated as incomplete end to end: the job is flagged in the UI and the
+    package is kept on disk even when post-ingest deletion is enabled.
+    """
+    ordered = sorted(prefetch_files, key=lambda p: _package_sort_key(p, package_dir))
+    if len(ordered) <= limit:
+        return ordered, None
+    omitted = len(ordered) - limit
+    note = (
+        f"{PARTIAL_PARSE_NOTE_PREFIX} {len(ordered)} raw prefetch file(s) found, "
+        f"{limit} parsed, {omitted} omitted by the PREFETCH_MAX_FILES ceiling "
+        f"({limit}). Raise PREFETCH_MAX_FILES and re-ingest to parse the rest."
+    )
+    return ordered[:limit], note
 
 
 def _module_categories(csv_path: Path) -> set[str]:
@@ -223,7 +272,11 @@ def ingest_package(
         )
 
     if "prefetch" not in preparsed:
-        prefetch_inputs = layout.prefetch_files[:100]
+        prefetch_inputs, prefetch_note = select_prefetch_inputs(
+            layout.prefetch_files, package_dir, resolve_prefetch_max_files()
+        )
+        if prefetch_note:
+            ingest_notes.append(prefetch_note)
         progress(
             80,
             f"Running PECmd on {len(prefetch_inputs)} prefetch file(s) "
@@ -246,7 +299,13 @@ def ingest_package(
 
     browser_events = 0
     if settings.hindsight_enabled and hindsight_available() and layout.browser_profile_dirs:
-        browser_dirs = layout.browser_profile_dirs[: settings.hindsight_max_profiles]
+        browser_dirs, cap_note = select_browser_profiles(
+            layout.browser_profile_dirs, settings.hindsight_max_profiles
+        )
+        # Recorded before the run so the omission survives regardless of what
+        # the processed profiles yield.
+        if cap_note:
+            ingest_notes.append(cap_note)
         progress(86, f"Running Hindsight on {len(browser_dirs)} Chromium profile(s)")
         browser_errors: list[str] = []
         for profile_dir in browser_dirs:

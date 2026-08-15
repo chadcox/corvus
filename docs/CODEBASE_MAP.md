@@ -201,7 +201,7 @@ CaseDetailPage  (owns cross-view pivot state: focusTimeline / focusPath / focusE
     (* shown only when stats.mft_count / browser_count > 0)
 ```
 
-**TimelineView**: virtualized, sparse page cache (`PAGE_SIZE=10000`), scrollbar-thumb bottom-jump special case, sqrt-scaled SVG histogram (`TimelineChart`). **MftView**: separate table, server pages of 500, client-side sort/search within loaded page only, timestomping flag when `$STANDARD_INFO < $FILE_NAME`. **DiskView**: tree browse + hex preview (512-byte windows). **BrowserView**: category tabs, load-more paging (200).
+**TimelineView**: virtualized, sparse page cache (`PAGE_SIZE=10000`), scrollbar-thumb bottom-jump special case, sqrt-scaled SVG histogram (`TimelineChart`). **MftView**: separate table, server pages of 500, server-side path search across the whole source (`q` + `mft_only`, 300ms debounce, page reset, count from `timeline/count` with the same filters), client-side sort within the loaded page only, timestomping flag when `$STANDARD_INFO < $FILE_NAME`. **DiskView**: tree browse + hex preview (512-byte windows). **BrowserView**: category tabs, load-more paging (200).
 
 **Polling intervals**: ingest/hash/yara jobs 2s; system status + admin overview 15s; GlobalSearch debounce 300ms; `/` keyboard shortcut focuses search.
 
@@ -261,12 +261,13 @@ Ingest priority tiers (docs/EVIDENCE-PACKAGE.md, confirmed in code): (1) pre-gen
 - **Module-CSV dedup is substring-based** (`evtxecmd` etc. in filename) **and event-gated** — a coincidentally named CSV suppresses raw parsing of that category only if it contributed at least one timeline event. A header-only or timestamp-less match suppresses nothing and adds an ingest note; with several matching CSVs, one populated CSV keeps the category suppressed.
 - **YARA detections** reuse `sigma_detections`; `sample_event_ids` hold file paths for `engine='yara'`.
 - **`DELETE_EVIDENCE_AFTER_INGEST=true`** irreversibly rmtree's the package after a complete ingest. A partial ingest (any `Partial parse:` note) keeps the package so the unread rows can be re-ingested, and records that in the job message.
+- **Hindsight profile ceiling** (`HINDSIGHT_MAX_PROFILES`, 8): Hindsight runs once per Chromium profile, so a package is capped at that many profiles. Selection is the lowest-sorted profile paths (deterministic per package) and the skipped profiles are reported as a count-only `Partial parse:` note, so a capped ingest retains the package. A non-positive value is clamped to one profile (use `HINDSIGHT_ENABLED=false` to turn browser parsing off). No note is produced when Hindsight is disabled or its binary is missing.
 - **Generic CSV row ceiling** (`MAX_CSV_ROW_INDEX`, 500k): parsing stops once an event is emitted from a row past that index, so a timestamp-less run can carry the retained prefix slightly further. One sentinel row is read to detect a real overflow, which is reported as a `Partial parse:` note — the omitted row count is never computed. Distinct from the CopyLog event cap (`MAX_KAPE_COLLECTION_EVENTS`), which is a display cap with the full tree in Disk view and is not treated as a partial parse.
 - **CSV exports may differ from JSON serialization** by CSV field quoting and one leading `'` on formula-like cells; compare against the JSON endpoints when byte-exact evidence values are needed.
 - **Worker boot reconcile**: the Celery `active`/`reserved`/`scheduled` inspect probe is presence-only, so an unclaimed job is not proof of an orphan. Default `WORKER_RECONCILE_UNCLAIMED_ACTION=skip` logs unclaimed jobs and leaves them `running`; opt-in `fail` marks them `error_code='interrupted'` but can falsely fail a live ingest whose worker did not answer the probe.
 - **web dead code**: `SigmaRulesSync.tsx` is unused (superseded by ControlPanelPage rules ops). `TimelineView` duplicates `ResizableSplit` logic inline.
 - **`utils/generated/` files** claim "re-generate from source" but no generator script exists in-repo — effectively vendored static data.
-- **MftView search** only searches the currently loaded 500-row server page.
+- **MFT `q` searches summary plus the reconstructed path** (`data->>'ParentPath'` + `data->>'FileName'`), with both the stored path and the typed term normalized to `/` so either separator matches. **MftView column sort still orders only the loaded 500-row page** — the UI labels it as such.
 - **`yara_rules.py`** hardcodes `/usr/local/bin/fetch-yara-rules.sh` (sigma/chainsaw resolve paths dynamically).
 - **Plaso timeout is per family invocation** (1800s each) when parallel families enabled.
 - **Velociraptor is import-only** (AGPL-3.0 — never bundled); Plaso/mac_apt/Volatility3 are opt-in image build args (`INSTALL_OPEN_FORENSICS`, `INSTALL_VOLATILITY3`, default false).
