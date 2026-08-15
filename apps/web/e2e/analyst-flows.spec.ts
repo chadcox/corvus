@@ -212,6 +212,42 @@ test('ingest diagnostics keep notes that contain the summary separator', async (
   await expect(notes.nth(1)).toHaveText(sigmaNote);
 });
 
+test('Chainsaw coverage warning is distinct from partial timeline parsing', async ({ page }) => {
+  const summary = 'Ingested 12 events, 3 entities, 4 filesystem nodes';
+  const coverageNote =
+    'Partial detection coverage: 312 EVTX file(s) found, 64 hunted, 248 not hunted '
+    + '(248 omitted by the effective CHAINSAW_EVTX_MAX ceiling of 64). '
+    + 'Re-ingest with a higher CHAINSAW_EVTX_MAX to hunt the omitted files.';
+
+  await installApiMocks(page, {
+    authedInitially: true,
+    sourceStatus: 'running',
+    sourceJobs: [
+      {
+        id: '44444444-4444-4444-4444-444444444444',
+        evidence_source_id: baseSource.id,
+        status: 'completed',
+        progress: 100,
+        message: `${summary} — ${coverageNote}`,
+        error_code: null,
+        error_stage: null,
+        started_at: '2026-01-01T00:00:00Z',
+        finished_at: '2026-01-01T00:01:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+  });
+
+  await gotoApp(page, `/cases/${baseCase.id}`);
+
+  const panel = page.locator('.ingest-status-panel');
+  await expect(panel.locator('.ingest-diagnostics-coverage')).toContainText(
+    'Incomplete detection coverage',
+  );
+  await expect(panel.locator('.ingest-diagnostics-partial')).toHaveCount(0);
+  await expect(panel.locator('li.coverage')).toHaveText(coverageNote);
+});
+
 test('MFT search queries the whole source and repages on the filtered count', async ({ page }) => {
   const requests: Array<{ offset: number; q: string | null; mftOnly: boolean }> = [];
   await installApiMocks(page, {

@@ -142,11 +142,20 @@ Detection hits appear as badges on timeline rows, in the event detail panel, and
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `CHAINSAW_EVTX_MODE` | `priority` | Process Security/Sysmon/PowerShell logs first, then others |
-| `CHAINSAW_EVTX_MAX` | `64` | Maximum EVTX files per ingest |
+| `CHAINSAW_EVTX_MAX` | `64` | Maximum EVTX files hunted per ingest (values below `1` are treated as `1`) |
 | `CHAINSAW_EVTX_PARALLEL` | `4` | Parallel hunt batches |
 | `CHAINSAW_EVTX_BATCH_SIZE` | `16` | EVTX files per batch |
 | `CHAINSAW_HUNT_BATCH_TIMEOUT_SECONDS` | `300` | Per-batch timeout |
 | `CHAINSAW_SIGMA_PROFILE` | `dfir` | Rule tier: `dfir` (~1400 rules), `full`, or `off` |
+
+When the effective `CHAINSAW_EVTX_MAX` ceiling omits EVTX files, or a selected
+batch fails or times out, the completed ingest reports a count-only `Partial
+detection coverage:` note with the numbers found, hunted, and not hunted. The
+note appears even when successful batches produce no hits and recommends
+re-ingesting after raising the ceiling or resolving the batch failure. It is a
+Chainsaw detection warning, not a parse warning: EVTX outside the hunt may still
+be timeline-parsed, and only `Partial parse:` notes affect automatic evidence
+package retention.
 
 **Rule bundle management:**
 

@@ -54,17 +54,32 @@ def find_evtx_files(
     mode ``priority`` (default): IR-relevant logs first, then others up to max_files.
     mode ``all``: lexicographic order, capped at max_files.
     """
+    selected, _ = find_evtx_files_with_count(
+        package_dir,
+        max_files=max_files,
+        mode=mode,
+    )
+    return selected
+
+
+def find_evtx_files_with_count(
+    package_dir: Path,
+    *,
+    max_files: int = 64,
+    mode: str = "priority",
+) -> tuple[list[Path], int]:
+    """Collect the selected EVTX paths and the uncapped number discovered."""
     all_evtx = [p for p in package_dir.rglob("*.evtx") if p.is_file()]
     if not all_evtx:
-        return []
+        return [], 0
 
     mode = (mode or "priority").lower()
     if mode == "all":
-        return sorted(all_evtx)[:max_files]
+        return sorted(all_evtx)[:max_files], len(all_evtx)
 
     ranked = sorted(all_evtx, key=lambda p: (evtx_priority_rank(p), str(p).lower()))
     priority = [p for p in ranked if is_priority_evtx(p)]
     if len(priority) >= max_files:
-        return priority[:max_files]
+        return priority[:max_files], len(all_evtx)
     remainder = [p for p in ranked if not is_priority_evtx(p)]
-    return (priority + remainder)[:max_files]
+    return (priority + remainder)[:max_files], len(all_evtx)

@@ -34,6 +34,19 @@ All notable changes to this project are documented here. Format loosely follows
 - `.env.example` no longer ships a working default admin password.
 
 ### Fixed
+- Chainsaw EVTX hunt coverage is no longer silent when the effective
+  `CHAINSAW_EVTX_MAX` ceiling omits files or a selected batch fails or times
+  out. The completed ingest now includes a count-only `Partial detection
+  coverage:` note reporting EVTX found, hunted, and not hunted, with separate
+  counts for ceiling omissions and failed batches and a re-ingest remedy. The
+  note appears even when successful batches produce zero hits, never includes
+  collected filenames or paths, and is suppressed when Chainsaw is disabled or
+  fast validation skips detections. Existing selection, ranking, batching,
+  matching, and successful-hit behavior are unchanged; values below `1` still
+  use an effective ceiling of `1`. This warning covers detection only because
+  EVTX outside the hunt can still be timeline-parsed; it does not use the
+  `Partial parse:` prefix and therefore does not change evidence-retention
+  cleanup.
 - A package holding more Chromium browser profiles than `HINDSIGHT_MAX_PROFILES`
   (default `8`) no longer drops the extras silently. Ingest still processes only
   the capped number of profiles, and the selection is unchanged in content but
