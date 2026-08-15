@@ -38,6 +38,14 @@ function splitJobMessage(message: string | null | undefined): {
   };
 }
 
+// Worker prefix for any note meaning "an input was not read in full" — a
+// completed job carrying one of these covered only part of the evidence.
+const PARTIAL_PARSE_PREFIX = "Partial parse:";
+
+function isPartialNote(note: string): boolean {
+  return note.startsWith(PARTIAL_PARSE_PREFIX);
+}
+
 export default function IngestStatusPanel({ phase, job, fileName }: Props) {
   const progress =
     phase === "uploading" ? undefined : job?.progress ?? (job?.status === "pending" ? 0 : undefined);
@@ -86,11 +94,23 @@ export default function IngestStatusPanel({ phase, job, fileName }: Props) {
       </p>
 
       {phase === "ingesting" && diagnostics.notes.length > 0 && (
-        <div className="ingest-diagnostics">
+        <div
+          className={`ingest-diagnostics${
+            diagnostics.notes.some(isPartialNote) ? " partial" : ""
+          }`}
+        >
           <p className="detail-section-label">Ingest diagnostics</p>
+          {diagnostics.notes.some(isPartialNote) && (
+            <p className="ingest-diagnostics-partial">
+              Incomplete ingest — at least one input was parsed only in part, so this
+              source does not cover all collected evidence.
+            </p>
+          )}
           <ul>
             {diagnostics.notes.map((note) => (
-              <li key={note}>{note}</li>
+              <li key={note} className={isPartialNote(note) ? "partial" : undefined}>
+                {note}
+              </li>
             ))}
           </ul>
         </div>
