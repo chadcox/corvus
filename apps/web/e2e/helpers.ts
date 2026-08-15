@@ -293,7 +293,8 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
       return;
     }
 
-    if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/filesystem/.test(path) && method === 'GET') {
+    // Anchored: must not shadow /filesystem/<id>/preview and /filesystem/<id>/hashes below.
+    if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/filesystem(\/search)?$/.test(path) && method === 'GET') {
       await json(route, Array.from({ length: collectionRows }, (_, index) => ({
           id: `99999999-9999-9999-9999-${String(index + 1).padStart(12, '0')}`,
           evidence_source_id: baseSource.id,

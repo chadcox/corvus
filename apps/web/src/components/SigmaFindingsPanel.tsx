@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, SigmaDetection, TimelineEvent } from "../api/client";
+import SeverityBadge, { severityClass } from "./SeverityBadge";
 
 type Props = {
   caseId: string;
@@ -7,14 +8,6 @@ type Props = {
   detections?: SigmaDetection[];
   onViewEvent?: (eventId: string) => void;
   onOpenPath?: (path: string) => void;
-};
-
-const LEVEL_CLASS: Record<string, string> = {
-  critical: "sigma-level-critical",
-  high: "sigma-level-high",
-  medium: "sigma-level-medium",
-  low: "sigma-level-low",
-  informational: "sigma-level-info",
 };
 
 const PAGE_SIZE = 5;
@@ -85,7 +78,7 @@ export default function SigmaFindingsPanel({ caseId, sourceId, detections: exter
             source.{" "}
             {top && (
               <span className="mono" style={{ opacity: 0.7 }}>
-                Highest: <span className={`status-badge ${LEVEL_CLASS[top.level] ?? "sigma-level-medium"}`}>{top.level}</span> {top.title}
+                Highest: <SeverityBadge level={top.level} variant="full" title={top.title} /> {top.title}
               </span>
             )}
           </p>
@@ -114,9 +107,7 @@ export default function SigmaFindingsPanel({ caseId, sourceId, detections: exter
           {pageDetections.map((d) => (
             <li key={d.id} className="sigma-detection-item">
               <div className="sigma-detection-row1">
-                <span className={`status-badge ${LEVEL_CLASS[d.level] ?? "sigma-level-medium"}`}>
-                  {d.level}
-                </span>
+                <SeverityBadge level={d.level} variant="full" title={d.title} />
                 {d.engine !== "yara" && d.sample_event_ids.length > 0 && onViewEvent ? (
                   <button
                     type="button"
@@ -211,9 +202,11 @@ export default function SigmaFindingsPanel({ caseId, sourceId, detections: exter
               <dd>{selectedDetection.engine ?? "sigma"}</dd>
               <dt>Severity</dt>
               <dd>
-                <span className={`status-badge ${LEVEL_CLASS[selectedDetection.level] ?? "sigma-level-medium"}`}>
-                  {selectedDetection.level}
-                </span>
+                <SeverityBadge
+                  level={selectedDetection.level}
+                  variant="full"
+                  title={selectedDetection.title}
+                />
               </dd>
               <dt>Definition</dt>
               <dd>{selectedDetection.description ?? "No description available."}</dd>
@@ -300,7 +293,7 @@ export function SigmaEventBadges({ hits }: { hits: TimelineEvent["sigma_hits"] }
   const top = hits[0];
   return (
     <span
-      className={`sigma-event-badge ${LEVEL_CLASS[top.level] ?? "sigma-level-medium"}`}
+      className={`sigma-event-badge ${severityClass(top.level)}`}
       title={hits.map((h) => h.title).join(", ")}
     >
       {hits.length > 1 ? `${hits.length} detections` : top.level}

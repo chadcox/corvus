@@ -57,6 +57,7 @@
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 
   --sidebar-width: 200px;
+  --sidebar-width-collapsed: 44px;
   --header-height: 44px;
   --context-bar-height: 40px;
 
@@ -149,7 +150,14 @@ button {
     color 0.12s ease-out, opacity 0.12s ease-out;
 }
 
-button:where(:hover:not(:disabled):not(.stat-card--action, .view-tab)) {
+button:where(
+    :hover:not(:disabled):not(
+        .stat-card--action,
+        .nav-item,
+        .nav-collapse,
+        .link-button
+      )
+  ) {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
 }

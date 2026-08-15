@@ -122,6 +122,12 @@ test.describe('backend analyst flow', () => {
 
     await page.goto(`/cases/${start.case_id}`);
     await expect(page.getByRole('heading', { name: caseName })).toBeVisible();
+
+    // The workspace lands on Overview (plan §4); Timeline is a nav-rail view.
+    await expect(page.getByRole('navigation', { name: 'Case views' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Case summary' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Timeline', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Timeline' })).toBeVisible();
     await expect(page.getByText(/Loaded .* of .* events/)).toBeVisible();
 

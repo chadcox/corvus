@@ -26,7 +26,7 @@ function BrandMark() {
 function NotFoundPage() {
   return (
     <section className="not-found">
-      <p className="not-found-code">Error 404</p>
+      <p className="not-found-code">404</p>
       <h1 className="page-title">That page is not part of this workspace</h1>
       <p className="page-subtitle">
         The address you opened does not match a case, an admin screen, or any other Corvus view. It
@@ -84,11 +84,20 @@ export default function App() {
           <BrandMark />
           Corvus
         </Link>
-        <span className="header-divider" aria-hidden="true" />
-        <span className="tagline">
-          {isCaseView ? "Investigation workspace" : "Forensic evidence review"}
-        </span>
+        {isCaseView && (
+          <>
+            <span className="header-divider" aria-hidden="true" />
+            <nav className="header-crumbs" aria-label="Breadcrumb">
+              <Link to="/" className="crumb-link">Cases</Link>
+              <span className="crumb-sep" aria-hidden="true">/</span>
+              {/* CaseDetailPage portals its renameable case-name heading in here. */}
+              <span id="header-case-slot" className="header-slot" />
+            </nav>
+          </>
+        )}
         <span className="header-spacer" />
+        {/* CaseDetailPage portals the global search trigger in here. */}
+        {isCaseView && <span id="header-search-slot" className="header-slot" />}
         {user?.role === "administrator" && <Link to="/admin/control-panel">Control Panel</Link>}
         {user && (
           <>
@@ -97,7 +106,7 @@ export default function App() {
           </>
         )}
       </header>
-      <main className="app-main" id="main-content">
+      <main className={isCaseView ? "app-main app-main--case" : "app-main"} id="main-content">
         <Routes>
           <Route path="/login" element={<LoginPage user={user} onLogin={setUser} />} />
           <Route path="/" element={authed ? <CasesPage /> : <Navigate to="/login" replace />} />

@@ -56,6 +56,14 @@ jobs:
         working-directory: apps/web
         run: npm ci
 
+      # Gate lane: deterministic, no browser, no network, runs in well under a
+      # second. Kept ahead of the bundle build so a broken pure helper fails
+      # fast with a readable assertion instead of a bundling error.
+      - name: Run web unit tests
+        if: steps.changes.outputs.run == 'true'
+        working-directory: apps/web
+        run: npm run test:unit
+
       - name: Build web production bundle
         if: steps.changes.outputs.run == 'true'
         working-directory: apps/web

@@ -146,7 +146,7 @@ export default function ControlPanelPage({ me }: Props) {
   const diskPct = totalDisk && freeDisk != null && totalDisk > 0 ? ((totalDisk - freeDisk) / totalDisk) * 100 : null;
 
   return (
-    <div>
+    <div className="control-panel">
       <div className="cases-top-row">
         <div className="cases-hero">
           <p className="section-label">Administration</p>

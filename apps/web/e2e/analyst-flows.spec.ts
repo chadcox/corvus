@@ -10,6 +10,9 @@ test('analyst can create a case and land on case workspace', async ({ page }) =>
 
   await expect(page).toHaveURL(/\/cases\/55555555-5555-5555-5555-555555555555$/);
   await expect(page.locator('.case-name')).toContainText('IR-2026-042');
+  // The workspace opens on the case nav rail; ingest now lives in the Sources view.
+  await expect(page.getByRole('navigation', { name: 'Case views' })).toBeVisible();
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Ingest evidence' })).toBeVisible();
 });
 
@@ -41,6 +44,8 @@ test('analyst workspace supports navigation and evidence actions', async ({ page
   );
   await expect(page.getByRole('heading', { name: 'Browser' })).toBeVisible();
 
+  // Evidence actions live on the Sources view now (plan §6.3).
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
   await page.getByRole('button', { name: 'Hash all evidence files' }).click();
   await page
     .getByRole('alertdialog', { name: 'Hash all evidence files' })
@@ -67,6 +72,8 @@ test('timeline loads additional server pages when scrolled deep into the list', 
   });
 
   await gotoApp(page, '/cases/22222222-2222-2222-2222-222222222222');
+  // The workspace lands on Overview; the virtualized list only mounts on Timeline.
+  await page.getByRole('button', { name: 'Timeline', exact: true }).click();
   await expect(page.getByText(new RegExp(`Loaded .* of ${totalRows} events`))).toBeVisible();
   await expect.poll(() => requestedOffsets).toContain(0);
 
@@ -153,6 +160,7 @@ test('evidence action remains scoped to its source while the request is pending'
   });
 
   await gotoApp(page, '/cases/22222222-2222-2222-2222-222222222222');
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
   await page.getByRole('button', { name: 'Hash all evidence files' }).click();
   const dialog = page.getByRole('alertdialog', { name: 'Hash all evidence files' });
   await expect(dialog).toBeVisible();
@@ -294,6 +302,7 @@ test('primary investigation rows support roving keyboard navigation', async ({ p
   });
   await gotoApp(page, `/cases/${baseCase.id}`);
 
+  await page.getByRole('button', { name: 'Timeline', exact: true }).click();
   const timeline = page.getByRole('listbox', { name: 'Timeline events' });
   const timelineRows = timeline.getByRole('option');
   await expect(timelineRows).toHaveCount(3);
@@ -352,6 +361,7 @@ test('evidence and ingest dialogs trap focus and restore their openers', async (
   await installApiMocks(page, { authedInitially: true });
   await gotoApp(page, `/cases/${baseCase.id}`);
 
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
   const sourceOpener = page.getByRole('button', { name: /WKS-042 Windows completed/ });
   await sourceOpener.click();
   const sourceDialog = page.getByRole('dialog', { name: 'Evidence source details' });
@@ -401,15 +411,28 @@ test('partial jobs and load failures never render optimistic evidence claims', a
   });
 
   await gotoApp(page, `/cases/${baseCase.id}`);
+  // The timeline only mounts on its own view now, so the failure has to be
+  // provoked there; the claim it must not make is that evidence loaded fine.
+  await page.getByRole('button', { name: 'Timeline', exact: true }).click();
   await expect(page.getByText('Failed to load timeline events.')).toBeVisible();
   await expect(page.getByText('No events yet — ingest may still be running.')).toHaveCount(0);
   await expect(page.locator('.timeline-distribution')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Events/ })).toHaveCount(0);
+  // The failed count must not leak back into the shell's pivots or the summary.
+  await expect(page.locator('.stats-strip').getByRole('button', { name: /Events/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await expect(page.locator('.summary-kpis').getByText('—')).toBeVisible();
+
+  // Re-entering Timeline refetches, so the error has to still be live for Retry
+  // to exist; only then does flipping the route prove the retry path recovers.
+  await page.getByRole('button', { name: 'Timeline', exact: true }).click();
+  await expect(page.getByText('Failed to load timeline events.')).toBeVisible();
   failTimeline = false;
   await page.getByRole('button', { name: 'Retry' }).click();
   await expect(page.getByText(/Loaded 1 of 1 events/)).toBeVisible();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await expect(page.locator('.summary-kpis').getByText('—')).toHaveCount(0);
 
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
   await page.getByRole('button', { name: 'View ingest history' }).click({ force: true });
   await expect(page.getByText('completed with errors')).toBeVisible();
   await expect(page.locator('.status-badge.partial')).toHaveCount(1);
@@ -502,21 +525,116 @@ test('interactive text contrast and keyboard focus styles meet the P0 floor', as
   expect(await ratio('.stat-card--action:first-of-type .stat-label')).toBeGreaterThanOrEqual(4.5);
   expect(await ratio('.stat-card--action:first-of-type .stat-value')).toBeGreaterThanOrEqual(4.5);
 
-  const activeTab = page.locator('.view-tab.active');
-  await activeTab.hover();
-  expect(await ratio('.view-tab.active')).toBeGreaterThanOrEqual(4.5);
+  // Nav rail (plan §5): the active item must stay legible, and keyboard focus
+  // must paint a visible ring on whichever item the user tabs onto.
+  const navOverview = page.getByRole('button', { name: 'Overview', exact: true });
+  const navTimeline = page.getByRole('button', { name: 'Timeline', exact: true });
+  await navTimeline.click();
+  await expect(navTimeline).toHaveClass(/active/);
+  await navTimeline.hover();
+  expect(await ratio('.nav-item.active')).toBeGreaterThanOrEqual(4.5);
   await page.mouse.move(0, 0);
+  // Shift+Tab is a keyboard interaction, so :focus-visible applies.
+  await page.keyboard.press('Shift+Tab');
+  await expect(navOverview).toBeFocused();
+  await expect(navOverview).toHaveCSS('outline-style', 'solid');
+  await expect(navOverview).toHaveCSS('outline-color', 'rgb(130, 177, 255)');
+
   const search = page.getByRole('searchbox', { name: 'Global search' });
   await search.click();
-  await page.keyboard.press('Tab');
-  await expect(activeTab).toBeFocused();
-  await expect(activeTab).toHaveCSS('outline-style', 'solid');
-  await expect(activeTab).toHaveCSS('outline-color', 'rgb(130, 177, 255)');
-
-  await page.keyboard.press('Shift+Tab');
   await expect(search).toBeFocused();
   await expect(search).toHaveCSS('outline-style', 'solid');
+  await page.keyboard.press('Escape');
   const splitter = page.getByRole('separator', { name: /Resize timeline/ });
   await splitter.focus();
   await expect(splitter).toHaveCSS('outline-style', 'solid');
+});
+
+test('detail drawers overlay the workspace from every opener and close on the backdrop', async ({ page }) => {
+  // The drawer replaces the old centred modals (plan §7.2): it must render
+  // through the portal above the workspace, carry real content, and be
+  // dismissible by the backdrop as well as Escape/Close.
+  await installApiMocks(page, {
+    authedInitially: true,
+    sourceJobs: [
+      {
+        id: '66666666-6666-6666-6666-666666666666',
+        evidence_source_id: baseSource.id,
+        status: 'completed',
+        progress: 100,
+        message: 'Ingested 11 events, 20 entities',
+        error_code: null,
+        error_stage: null,
+        started_at: '2026-01-01T00:00:00Z',
+        finished_at: '2026-01-01T00:01:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+  });
+  await gotoApp(page, `/cases/${baseCase.id}`);
+
+  // Opener 1: the context-bar ⓘ, available from any view.
+  const contextOpener = page.getByRole('button', { name: 'Source details' });
+  await contextOpener.click();
+  const sourceDrawer = page.getByRole('dialog', { name: 'Evidence source details' });
+  await expect(sourceDrawer).toBeVisible();
+  await expect(sourceDrawer).toContainText('WKS-042');
+  await expect(sourceDrawer).toContainText('Windows');
+  // Portalled to <body>, so the drawer is never clipped by the workspace grid.
+  await expect(sourceDrawer.locator('xpath=ancestor::*[@id="root"]')).toHaveCount(0);
+  // Backdrop click dismisses; clicks inside the panel must not.
+  await sourceDrawer.click({ position: { x: 10, y: 10 } });
+  await expect(sourceDrawer).toBeVisible();
+  await page.locator('.drawer-backdrop').click({ position: { x: 5, y: 5 } });
+  await expect(sourceDrawer).toBeHidden();
+  await expect(contextOpener).toBeFocused();
+
+  // Opener 2: the Sources view card, same drawer, fresh hash state.
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
+  await page.getByRole('button', { name: /WKS-042 Windows completed/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Evidence source details' })).toBeVisible();
+  await page.getByRole('dialog', { name: 'Evidence source details' })
+    .getByRole('button', { name: 'Close' })
+    .click();
+  await expect(page.getByRole('dialog', { name: 'Evidence source details' })).toBeHidden();
+
+  // Ingest history drawer renders one section per source with its job lines.
+  await page.getByRole('button', { name: 'View ingest history' }).click();
+  const historyDrawer = page.getByRole('dialog', { name: 'Ingest history' });
+  await expect(historyDrawer).toBeVisible();
+  await expect(historyDrawer.getByRole('heading', { name: 'WKS-042' })).toBeVisible();
+  await expect(historyDrawer.locator('.job-history-item')).toHaveCount(1);
+  await expect(historyDrawer).toContainText('Ingested 11 events, 20 entities');
+  await page.locator('.drawer-backdrop').click({ position: { x: 5, y: 5 } });
+  await expect(historyDrawer).toBeHidden();
+});
+
+test('nav rail collapse survives reload and keeps its labels reachable', async ({ page }) => {
+  await installApiMocks(page, { authedInitially: true });
+  await gotoApp(page, `/cases/${baseCase.id}`);
+
+  const workspace = page.locator('.case-workspace');
+  const collapse = page.getByRole('button', { name: 'Collapse navigation' });
+  await expect(workspace).not.toHaveClass(/nav-collapsed/);
+
+  await collapse.click();
+  await expect(workspace).toHaveClass(/nav-collapsed/);
+  expect(await page.evaluate(() => window.localStorage.getItem('corvus.navCollapsed'))).toBe('1');
+  // Collapsed rail keeps the accessible name (icon + tooltip only visually).
+  const timeline = page.getByRole('button', { name: 'Timeline', exact: true });
+  await expect(timeline).toHaveAttribute('title', 'Timeline');
+  await timeline.click();
+  await expect(timeline).toHaveClass(/active/);
+
+  await page.reload();
+  await expect(page.locator('.case-workspace')).toHaveClass(/nav-collapsed/);
+  const expand = page.getByRole('button', { name: 'Expand navigation' });
+  await expect(expand).toBeVisible();
+
+  await expand.click();
+  await expect(page.locator('.case-workspace')).not.toHaveClass(/nav-collapsed/);
+  expect(await page.evaluate(() => window.localStorage.getItem('corvus.navCollapsed'))).toBe('0');
+  await page.reload();
+  await expect(page.locator('.case-workspace')).not.toHaveClass(/nav-collapsed/);
+  await expect(page.getByRole('button', { name: 'Collapse navigation' })).toBeVisible();
 });

@@ -300,7 +300,7 @@ export default function DiskView({ caseId, sourceId, focusPath }: Props) {
                 {preview && !previewLoading && (
                   <>
                     <p className="mono" style={{ margin: "0.35rem 0 0.5rem", color: "var(--muted)" }}>
-                      Offset {preview.offset.toLocaleString()} · Showing {preview.length.toLocaleString()} of {preview.file_size.toLocaleString()} bytes
+                      Offset {(preview.offset ?? 0).toLocaleString()} · Showing {(preview.length ?? 0).toLocaleString()} of {(preview.file_size ?? 0).toLocaleString()} bytes
                     </p>
                     <div className="disk-preview-grid">
                       <pre className="disk-preview-block mono">{preview.hex || "(empty)"}</pre>
