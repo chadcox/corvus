@@ -638,3 +638,89 @@ test('nav rail collapse survives reload and keeps its labels reachable', async (
   await expect(page.locator('.case-workspace')).not.toHaveClass(/nav-collapsed/);
   await expect(page.getByRole('button', { name: 'Collapse navigation' })).toBeVisible();
 });
+
+test('overview summarises the source and pivots into detections and timeline', async ({ page }) => {
+  await installApiMocks(page, { authedInitially: true });
+  await gotoApp(page, `/cases/${baseCase.id}`);
+
+  // Overview is the landing view and must carry the whole-source summary, not
+  // a single card: severity distribution, the detection table and the source
+  // table all render from data the shell already fetched.
+  const overview = page.locator('.overview-grid').first();
+  await expect(page.locator('.summary-kpis')).toBeVisible();
+  await expect(
+    overview.getByRole('img', { name: /Detection severity distribution:/ })
+  ).toBeVisible();
+  const detectionRow = page.locator('.overview-detections-table tbody tr');
+  await expect(detectionRow).toHaveCount(1);
+  await expect(detectionRow).toContainText('Suspicious Logon');
+  const sourceRow = page.locator('.overview-sources-table tbody tr');
+  await expect(sourceRow).toHaveCount(1);
+  await expect(sourceRow).toContainText('WKS-042');
+  // The selected source is the only row allowed to claim an event count.
+  await expect(sourceRow).toHaveClass(/selected/);
+  await expect(sourceRow.locator('td.num-col')).toHaveText('3');
+
+  // Detection pivot: opening a rule from Overview lands on Detections with
+  // that rule's detail already open, so the analyst never re-searches for it.
+  await detectionRow.getByRole('button', { name: 'Open MED detection Suspicious Logon' }).click();
+  await expect(page.getByRole('button', { name: 'Detections', exact: true })).toHaveClass(/active/);
+  // §6.7: the detail is the persistent right inspector, not a modal.
+  const detail = page.getByRole('complementary', { name: 'Detection details' });
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText('test.rule');
+  await detail.getByRole('button', { name: 'Clear selection' }).click();
+  await expect(detail).toContainText('Select a detection.');
+
+  // Source pivot: the host link selects that source and opens Timeline.
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await sourceRow.getByRole('button', { name: 'Open WKS-042 in Timeline' }).click();
+  await expect(page.getByRole('button', { name: 'Timeline', exact: true })).toHaveClass(/active/);
+  await expect(page.getByText(/Loaded \d+ of \d+ events/)).toBeVisible();
+});
+
+test('detections view filters, expands hits, and pivots to the event', async ({ page }) => {
+  await installApiMocks(page, { authedInitially: true });
+  await page.goto(`/cases/${baseCase.id}`);
+  await page.getByRole('button', { name: 'Detections', exact: true }).click();
+
+  // The grouped table replaces the old card list: one row per rule, with the
+  // hit count in its own column instead of buried in prose.
+  const row = page.getByRole('row', { name: /Suspicious Logon/ });
+  await expect(row).toBeVisible();
+  await expect(row.locator('td.col-num')).toHaveText('1');
+  await expect(row.locator('td.col-engine')).toContainText(/sigma/i);
+
+  // Severity filter only offers levels actually present, so the analyst never
+  // picks a filter that can only return nothing.
+  const severitySelect = page.getByLabel('Filter by severity');
+  await expect(severitySelect.locator('option')).toHaveText(['All severities', 'medium']);
+  await severitySelect.selectOption('medium');
+  await expect(row).toBeVisible();
+
+  // Search narrows on rule text, not just title, and the empty state offers a
+  // way back.
+  await page.getByLabel('Search detections').fill('nomatch');
+  await expect(page.getByText('No detections match these filters.')).toBeVisible();
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(row).toBeVisible();
+  await expect(severitySelect).toHaveValue('all');
+  await page.getByLabel('Search detections').fill('test.rule');
+  await expect(row).toBeVisible();
+
+  // Selecting the row fills the persistent inspector (no modal to dismiss).
+  await row.click();
+  const inspector = page.getByRole('complementary', { name: 'Detection details' });
+  await expect(inspector).toContainText('test.rule');
+  await expect(inspector).toContainText('Synthetic detection');
+
+  // Expanding hits resolves the sample event ids to real summaries.
+  await row.getByRole('button', { name: 'Expand hits for Suspicious Logon' }).click();
+  const hit = page.locator('.detection-hit').first();
+  await expect(hit).toContainText('User logon 1');
+
+  // View event pivots to Timeline with that event focused.
+  await hit.getByRole('button', { name: 'View event' }).click();
+  await expect(page.getByRole('button', { name: 'Timeline', exact: true })).toHaveClass(/active/);
+  await expect(page.getByText(/Loaded \d+ of \d+ events/)).toBeVisible();
+});

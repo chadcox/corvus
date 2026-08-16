@@ -235,6 +235,23 @@ export async function installApiMocks(page: Page, options: MockOptions = {}): Pr
       return;
     }
 
+    if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/timeline\/events\/[^/]+$/.test(path) && method === 'GET') {
+      const eventId = path.split('/').pop() as string;
+      await json(route, {
+        id: eventId,
+        evidence_source_id: baseSource.id,
+        timestamp_utc: '2026-01-01T00:00:00Z',
+        event_type: 'logon',
+        summary: 'User logon 1',
+        artifact_type: 'mft',
+        original_source: 'security.evtx',
+        data: { path: 'C:/Users/analyst1' },
+        entity_refs: [],
+        sigma_hits: [{ rule_id: 'test.rule', title: 'Suspicious Logon', level: 'medium', engine: 'sigma' }],
+      });
+      return;
+    }
+
     if (/^\/api\/v1\/cases\/[^/]+\/sources\/[^/]+\/timeline/.test(path) && method === 'GET') {
       const limit = Number(url.searchParams.get('limit') || '200');
       const offset = Number(url.searchParams.get('offset') || '0');

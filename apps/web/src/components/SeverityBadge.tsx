@@ -45,6 +45,12 @@ export function severityClass(level: string | null | undefined): string {
   return LEVEL_CLASS[(level ?? "").toLowerCase()] ?? "sigma-level-medium";
 }
 
+/** §12 row treatment: 2px left edge in the severity color (critical also fills). */
+export function severityRowClass(level: string | null | undefined): string {
+  const canonical = CANONICAL[(level ?? "").toLowerCase()] ?? "medium";
+  return `severity-row--${canonical}`;
+}
+
 /** Full class list for a §12 badge: canonical modifier + legacy class. */
 export function severityClasses(level: string | null | undefined): string {
   const canonical = CANONICAL[(level ?? "").toLowerCase()] ?? "medium";

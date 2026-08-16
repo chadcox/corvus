@@ -3,12 +3,17 @@
 Companion to [UI_REDESIGN_PLAN.md](UI_REDESIGN_PLAN.md). Tracks what is actually built,
 what was learned, and what the next phase must not trip over.
 
-Last updated: 2026-08-15. Working tree state: **Phase 1 is committed (`3027c60`); Phase 2 is
-this commit.** Phases 3-6 are not started.
+Last updated: 2026-08-16. Working tree state: **Phases 1-2 are committed (`3027c60`,
+`f086048`); Phase 3 is this commit.** Phases 4-6 are not started.
 
 Phase 2 in one line: the case workspace is now a shell — nav rail, context bar, stat strip,
 and a single right-hand `Drawer` — with the pure formatting logic pulled out of
 `CaseDetailPage.tsx` into `src/lib/caseFormat.ts` behind a 53-test vitest gate lane.
+
+Phase 3 in one line: the three extraction views are real components — `SourcesView` (table +
+rail + detail drawer), `OverviewView` (severity distribution, top detections, top hosts), and
+`SigmaFindingsPanel` rebuilt as a table/inspector Detections view — with Overview → Detections
+→ Timeline pivots wired end to end.
 
 ## Phase status
 
@@ -16,7 +21,7 @@ and a single right-hand `Drawer` — with the pure formatting logic pulled out o
 | --- | --- | --- |
 | 1 | Foundation — tokens, fonts, motion, new CSS sections | **Implemented** (see caveats) |
 | 2 | Shell — top bar, CaseNav, Drawer, SeverityBadge, CaseDetailPage re-composition | **Implemented** (see caveats) |
-| 3 | Extraction views — SourcesView, OverviewView, Detections | Not started |
+| 3 | Extraction views — SourcesView, OverviewView, Detections | **Implemented** (see caveats) |
 | 4 | Investigation views — Timeline, Object, Disk, MFT, Browser | Not started |
 | 5 | Peripheral pages — Cases, Control Panel, Admin Users, Login, GlobalSearch, IngestStatusPanel | Not started |
 | 6 | QA hardening — dead CSS purge, states, a11y, screenshots, backend smoke | Not started |
@@ -200,9 +205,97 @@ Two tests in `analyst-flows.spec.ts` (now 17 there, 22 mocked overall):
 
 ---
 
+## Phase 3 — what actually changed
+
+Files touched: two new components (`apps/web/src/components/SourcesView.tsx` 346 lines,
+`OverviewView.tsx` 397 lines), `SigmaFindingsPanel.tsx` rewritten (629 lines),
+`CaseDetailPage.tsx` (1137 → 837 lines), `SeverityBadge.tsx`, `App.css`,
+`e2e/analyst-flows.spec.ts`, `e2e/helpers.ts`. Net ~1185 insertions / ~919 deletions.
+
+### 1. SourcesView (§6.1) — cards became a table
+
+The Phase 2 stopgap rendered `.source-card` list items in the left column with per-source
+actions buried inside the card. It is now a two-column view:
+
+- `.sources-view-main` holds a `data-table--spec` table: Host / Platform / Collector /
+  Status / Ingested / Events / Actions. Row click selects; the selected row carries
+  `is-selected`. Hash and YARA state (running / complete / match count) render as inline
+  row notes instead of separate panels.
+- `.sources-view-rail` holds the upload dropzone, hostname/platform overrides, the live job
+  status line, and the **View ingest history** button.
+- Source detail moved into the shared `Drawer` (`openSourceDetails`): manifest metadata,
+  evidence hashes with the export link, and processing time. Nothing is duplicated between
+  the table and the drawer.
+- `computeFileHashes` / `computeYaraScan` keep their `ConfirmDialog` gate; the confirm text
+  is unchanged, only the trigger moved to the row action buttons.
+
+The old card CSS is gone, not orphaned — see §5 below.
+
+### 2. OverviewView (§6.2) — the summary panel got a body
+
+`OverviewView` owns the `CountsStrip` pivots plus three new panels beneath it:
+
+- **Detection severity distribution** — a `data-table--spec` table (Sev / Rule / Hits),
+  severity-ordered by `SEVERITY_ORDER`, each row a `link-button` that pivots into Detections
+  with that rule focused.
+- **Top hosts** and **Top categories** lists derived from the same `stats` payload the strip
+  already fetches. No new API calls were added in this phase.
+- Empty states are explicit (`No detections on this source.` / `No detection categories.`)
+  rather than a collapsed panel.
+
+Pivots are props, not context: `onOpenDetection(ruleId)` and `onOpenTimeline(eventId)` are
+passed down from `CaseDetailPage`, which owns `detectionFocus` state.
+
+### 3. Detections view (§6.7) — panel to table + inspector
+
+`SigmaFindingsPanel` no longer renders the old card grid. It is now:
+
+- **Toolbar** — search box, severity `<select>`, engine `<select>`, `Clear filters`, and a
+  critical-count line. All three filters compose; filtering resets to page 1.
+- **Table** (`detections-table`) — Expand / Sev / Rule / Engine / Hits / Tags. The expander
+  row (`detection-hits-row`) lists matched event ids inline and each is a pivot into Timeline.
+- **Inspector** (`detections-inspector`) — the right-hand column shows the selected rule's
+  definition, tags, matched paths, and sample events. Selecting a row fills it; `Clear selection` empties
+  it back to the guide text.
+- **Focus handoff** — `focusRuleId` + `onFocusConsumed` let Overview open Detections with a
+  rule pre-selected and the search box pre-filled. The prop is consumed once, so a later
+  in-view search does not get clobbered by the stale focus.
+- §12 severity rollout landed here: `severityRowClass()` (new export in `SeverityBadge.tsx`)
+  gives the **2px** left edge per G6, and only `critical` gets the `*-dim` fill.
+
+### 4. Timeline event pivot needed a mock route
+
+`GET /api/v1/cases/:id/sources/:sid/timeline/events/:eventId` had no handler in
+`e2e/helpers.ts`, so every pivot 404'd under the mocked lane while working fine against the
+live API. Added it with a `sigma_hits` payload so the badge path is exercised too.
+
+### 5. Dead CSS actually removed this time (partial)
+
+Phase 3 orphaned its own predecessors, so they were deleted in the same commit rather than
+deferred: `.source-card*` (5 rules), `.evidence-hash-*` (4), `.source-processing-time` (2),
+and the five `.summary-severity-{critical,high,medium,low,informational}` rules. ~2.7 KB.
+
+**Not touched:** `.grid-2` / `.grid-2-wide-left` (orphaned by the Phase 2 re-composition),
+the `.table-shell` / `.data-table--comfortable` / `.col-time` / `.sort-indicator` /
+`.pivot-value--mono` §13 opt-ins (explicitly reserved for Phase 4 views), and the `--cyan`
+aliases. Those belong to the Phase 6 purge and deleting them now would strand Phase 4.
+
+### 6. Caveats — what Phase 3 did not do
+
+- **No new backend data.** Every panel is derived from `stats`, `sources`, and the existing
+  detections/timeline endpoints. Plan §6.2's "coverage gaps" needs an API that does not exist
+  yet; it was deliberately dropped rather than faked client-side.
+- **Detections pagination is client-side** over the already-fetched page window, matching the
+  pre-existing behaviour. Server-side paging is a Phase 4/6 question.
+- **`SourcesView` has no re-ingest affordance.** Delete and hash/YARA are wired; re-ingest has
+  no endpoint, so the plan item is unimplementable as written.
+- **Still no visual review** (Phase 6). Screenshots were regenerated, not evaluated.
+
+---
+
 ## Gotchas for the next phase
 
-Read these before writing Phase 3 code.
+Read these before writing Phase 4 code.
 
 ### G1. `--muted` fails body-text contrast — do not use it for readable text
 
@@ -298,6 +391,11 @@ Expect the design hook to keep flagging this rule for the whole redesign. It is 
 justified divergence; decide once whether to persist a scoped ignore rather than re-litigating
 it each pass.
 
+**Resolved in Phase 3 (partially).** `severityRowClass()` in `SeverityBadge.tsx` is now the
+canonical row treatment: 2px left edge, `*-dim` fill on `critical` only, badge always paired.
+Detections and Overview both use it. Phase 4 inherits the helper — the remaining work is
+applying it to the investigation views, not re-deciding the rule.
+
 ### G7. Route-order bugs in the e2e mocks masquerade as app bugs
 
 `installApiMocks` (`e2e/helpers.ts`) registers Playwright routes in order and the first glob
@@ -355,6 +453,23 @@ throw or a blank — asserted in `SeverityBadge.test.ts`.
 | Backend smoke (`validate-ingest.sh`, `sigma-self-test.sh`) | Not run — no backend change in Phase 2 (the API fix in `69bbb25` was verified separately) |
 | Visual screenshot review | Not done — still deferred to Phase 6 |
 
+### Phase 3
+
+| Check | Result |
+| --- | --- |
+| `npm run test:unit` (vitest) | Passed — **53/53**, 2 files (no new pure helpers this phase; the new logic is component-level and covered by e2e) |
+| Mocked Playwright suite (`smoke`, `analyst-flows`, `control-panel`) | Passed — **24/24 in 8.5s** (22 → 24: overview pivots, detections filter/expand/pivot) |
+| Backend Playwright flow (`backend-analyst-flow.spec.ts`, `PLAYWRIGHT_BACKEND_E2E=1`) | Passed — **1/1** against the live stack with real ingest data |
+| `npm run build` (node:20-alpine, bind mount) | Passed — clean production build |
+| Screenshots | Regenerated — `03-timeline`, `04-browser`, `04-disk`, `04-entities`, `04-mft` |
+| Dangling-class grep after the CSS purge (`source-card`, `evidence-hash-`, `source-processing-time`, `summary-severity-{level}`) | Passed — zero hits outside `.summary-severity-none`, which is still used |
+| Backend smoke (`validate-ingest.sh`, `sigma-self-test.sh`) | Not run — no backend change in Phase 3 |
+| Visual screenshot review | Not done — still deferred to Phase 6 |
+
+The mocked lane is the real gate for this phase: the two new tests walk Overview → rule
+pivot → Detections (filter, expand hits) → Timeline event, which is exactly the wiring Phase 3
+added.
+
 Reproduce the two Playwright lanes:
 
 ```bash
@@ -389,21 +504,34 @@ docker run --rm --network corvus_default -v "$PWD/apps/web:/w" -w /w \
 
 ---
 
-## Next — Phase 3 entry point
+## Next — Phase 4 entry point
 
-Phase 3 is the extraction views (plan §6.1-6.3): SourcesView, OverviewView, Detections. The
-shell is done, so these are now pure content rebuilds inside `.case-content` — no layout
-plumbing left to fight.
+Phase 4 is the investigation views (plan §7-§11): Timeline, Object/Entities, Disk, MFT,
+Browser. Unlike Phase 3 these are not greenfield — each already has a working component with
+real virtualization and real data plumbing, so the risk profile inverts: **the danger is
+breaking working behaviour while restyling**, not building the wrong thing.
 
-Suggested order:
+Suggested order, cheapest first:
 
-1. **SourcesView** — the largest win and the thinnest current implementation. Per-source
-   cards, collector/platform detail, ingest history entry point (the `Drawer` already exists),
-   re-ingest and delete affordances.
-2. **OverviewView** — the stat strip is already pivoting correctly; this is about the summary
-   panels beneath it (top severities, top hosts, coverage gaps).
-3. **Detections** — the §12 severity rollout lands here: left-edge to 2px, `SeverityBadge`
-   everywhere, `*-dim` fill only for critical (G6, G9).
+1. **Object / Entities view** — the least mechanically complex. Straight `data-table--spec`
+   adoption plus pivot affordances (§7).
+2. **Disk and MFT** — both already render tables. Adopt the §13 opt-in classes that Phase 3
+   deliberately left in place (`table-shell`, `col-time`, `col-num`, `sort-indicator`,
+   `data-table--comfortable`). This is what those classes were reserved for.
+3. **Browser** — same table treatment, plus the profile grouping the plan calls for.
+4. **Timeline last.** It owns virtualization, the splitter, the histogram, and the
+   `TimelineLoadState` contract that Overview and Detections now pivot into. Touching it last
+   means the two new callers are already proven against the current behaviour.
 
-Do the helper extraction as you go, not after (G8). Both new views should ship with vitest
-coverage for their formatters in the same commit.
+Rules carried forward:
+
+- Reuse `SourcesView` / `OverviewView` as the pattern: view component owns its markup and
+  local UI state, `CaseDetailPage` owns cross-view state and passes pivots as props.
+- Pure helpers go to `src/lib/` with vitest coverage in the same commit (G8), component
+  behaviour goes to the mocked Playwright lane.
+- Any pivot that hits a new API path must get a mock route in `e2e/helpers.ts` — the
+  timeline-event 404 in §4 above cost real time and would have shipped silently.
+- `severityRowClass()` is the §12 row treatment now. Use it; do not hand-roll a left edge.
+
+Phase 6's dead-CSS purge inherits a shorter list than planned (Phase 3 cleaned its own
+orphans) but still owns `.grid-2*`, the `--cyan` aliases, and whatever Phase 4-5 strand.

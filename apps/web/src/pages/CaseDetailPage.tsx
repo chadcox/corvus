@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
 import {
@@ -19,11 +19,12 @@ import DiskView from "../components/DiskView";
 import GlobalSearch from "../components/GlobalSearch";
 import IngestStatusPanel from "../components/IngestStatusPanel";
 import SigmaFindingsPanel from "../components/SigmaFindingsPanel";
+import SourcesView from "../components/SourcesView";
 import ObjectView from "../components/ObjectView";
+import OverviewView, { CountsStrip, StatPivot } from "../components/OverviewView";
 import TimelineView from "../components/TimelineView";
 import ConfirmDialog from "../components/ConfirmDialog";
 import Drawer from "../components/Drawer";
-import SeverityBadge from "../components/SeverityBadge";
 import {
   ACTIVE_JOB_STATUSES,
   formatCompactStat,
@@ -38,7 +39,6 @@ import {
 } from "../lib/caseFormat";
 
 type Tab = CaseTab;
-type StatPivot = "events" | "objects" | "paths" | "sigma" | "mft" | "browser";
 type ConfirmAction =
   | { kind: "cancel"; jobId: string }
   | { kind: "hash"; sourceId: string }
@@ -77,7 +77,6 @@ export default function CaseDetailPage() {
   // an h1 in the workspace (one instance only — the e2e suite matches it by text).
   const [searchSlot, setSearchSlot] = useState<HTMLElement | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
   const [uploadFileName, setUploadFileName] = useState<string | null>(null);
   const [job, setJob] = useState<IngestJob | null>(null);
   const [hostname, setHostname] = useState("");
@@ -85,7 +84,6 @@ export default function CaseDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [focusTimeline, setFocusTimeline] = useState<TimelineEvent | null>(null);
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const [focusEntity, setFocusEntity] = useState<Entity | null>(null);
@@ -99,6 +97,8 @@ export default function CaseDetailPage() {
   const [yaraSourceIds, setYaraSourceIds] = useState<Set<string>>(() => new Set());
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [detections, setDetections] = useState<SigmaDetection[]>([]);
+  /** Rule id handed from the Overview top-detections table to the Detections view. */
+  const [detectionFocus, setDetectionFocus] = useState<string | null>(null);
   const [sourceInfoOpen, setSourceInfoOpen] = useState(false);
   const [sourceInfo, setSourceInfo] = useState<EvidenceSource | null>(null);
   const [sourceInfoHash, setSourceInfoHash] = useState<EvidenceHashes | null>(null);
@@ -307,18 +307,6 @@ export default function CaseDetailPage() {
     return () => clearInterval(t);
   }, [caseId, selectedSource, hashInfo, sourceInfoOpen, sourceInfo]);
 
-  const summaryCategories = useMemo(() => {
-    const counts = new Map<string, number>();
-    detections.forEach((d) => {
-      const tag = d.tags.find((t) => t.startsWith("attack.")) ?? d.tags[0] ?? d.level;
-      counts.set(tag, (counts.get(tag) ?? 0) + 1);
-    });
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([tag]) => tag.replace(/^attack\./, ""));
-  }, [detections]);
-
   useEffect(() => {
     if (!job || (job.status !== "pending" && job.status !== "running")) return;
     const t = setInterval(() => {
@@ -386,13 +374,6 @@ export default function CaseDetailPage() {
     } catch (err) {
       setError(String(err));
     }
-  };
-
-  const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await handleUploadFile(file);
-    e.target.value = "";
   };
 
   const startRename = () => {
@@ -540,260 +521,30 @@ export default function CaseDetailPage() {
         )}
 
         {tab === "sources" && (
-          <section className="sources-view" aria-label="Evidence sources">
-            <div className="panel">
-              <h2>Ingest evidence</h2>
-              <p className="panel-desc">
-                Upload a ZIP archive or individual files — EVTX logs, $MFT, registry hives, Chromium profiles, CSV exports, and more.
-              </p>
-              {loadError && (
-                <p className="panel-desc">Evidence controls are unavailable until case data loads.</p>
-              )}
-              {uploadError && (
-                <div className="alert alert-error">
-                  {uploadError}
-                  <button type="button" className="secondary" onClick={() => setUploadError(null)}>
-                    Try another file
-                  </button>
-                </div>
-              )}
-              {!loadError && !uploadError && <div className="upload-zone">
-                <div
-                  className={`upload-drop-hint${dragActive ? " is-dragover" : ""}${(uploading || isActiveJob(job)) ? " is-disabled" : ""}`}
-                  role="button"
-                  tabIndex={uploading || isActiveJob(job) ? -1 : 0}
-                  aria-label="Drop evidence files or click to select"
-                  onClick={() => {
-                    if (uploading || isActiveJob(job)) return;
-                    fileInputRef.current?.click();
-                  }}
-                  onKeyDown={(e) => {
-                    if (uploading || isActiveJob(job)) return;
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      fileInputRef.current?.click();
-                    }
-                  }}
-                  onDragEnter={(e) => {
-                    e.preventDefault();
-                    if (uploading || isActiveJob(job)) return;
-                    setDragActive(true);
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    if (uploading || isActiveJob(job)) return;
-                    setDragActive(true);
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault();
-                    const next = e.relatedTarget as Node | null;
-                    if (!next || !e.currentTarget.contains(next)) {
-                      setDragActive(false);
-                    }
-                  }}
-                  onDrop={async (e) => {
-                    e.preventDefault();
-                    setDragActive(false);
-                    if (uploading || isActiveJob(job)) return;
-                    const file = e.dataTransfer.files?.[0];
-                    if (!file) return;
-                    await handleUploadFile(file);
-                  }}
-                >
-                  {uploading ? "Uploading…" : "Select files or a ZIP archive"}
-                </div>
-                <div className="upload-actions">
-                  <input
-                    placeholder="Hostname override"
-                    value={hostname}
-                    onChange={(e) => setHostname(e.target.value)}
-                    aria-label="Hostname override"
-                    disabled={uploading || isActiveJob(job)}
-                  />
-                  <select
-                    value={platform}
-                    onChange={(e) => setPlatform(e.target.value)}
-                    aria-label="Evidence platform"
-                    disabled={uploading || isActiveJob(job)}
-                  >
-                    <option value="unknown">Auto platform</option>
-                    <option value="windows">Windows</option>
-                    <option value="macos">macOS</option>
-                    <option value="linux">Linux</option>
-                    <option value="memory">Memory</option>
-                    <option value="disk">Disk image (E01/RAW)</option>
-                  </select>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    style={{ display: "none" }}
-                    onChange={onUpload}
-                    disabled={uploading || isActiveJob(job)}
-                  />
-                </div>
-              </div>}
-              {job && !uploading && (
-                <div className="ingest-status-compact">
-                  <div className="job-status-line">
-                    <span className={`status-badge ${jobDisplayStatus(job).status}`}>
-                      {jobDisplayStatus(job).label}
-                    </span>
-                    <span>{job.progress}%</span>
-                  </div>
-                  {job.message && (
-                    <p className="mono ingest-status-compact-msg">{job.message}</p>
-                  )}
-                  {isActiveJob(job) && (
-                    <button
-                      type="button"
-                      className="secondary"
-                      style={{ width: "100%", marginTop: "0.5rem" }}
-                      onClick={cancelProcessing}
-                    >
-                      Cancel processing
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="panel">
-              <h2>Evidence sources</h2>
-              {sources.length === 0 && (
-                <p className="panel-desc" style={{ margin: 0 }}>No evidence uploaded yet.</p>
-              )}
-              {sources.length > 0 && (
-                <ul className="source-card-list">
-                  {sources.map((s) => (
-                    <li
-                      key={s.id}
-                      className={`source-card${selectedSource === s.id ? " selected" : ""}`}
-                      onClick={() => openSourceDetails(s)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key !== "Enter") return;
-                        openSourceDetails(s);
-                      }}
-                    >
-                      <div>
-                        <div className="source-card-name">{s.hostname}</div>
-                        <div className="source-card-host">
-                          {[
-                            sourcePlatformLabel(s.platform),
-                          ].filter(Boolean).join(" · ")}
-                        </div>
-                      </div>
-                      <span className={`status-badge ${s.status}`}>{s.status}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {selectedSourceData?.manifest && (
-                <dl className="manifest-meta">
-                  <dt>Platform</dt>
-                  <dd>{sourcePlatformLabel(selectedSourceData.platform)}</dd>
-                  <dt>Source</dt>
-                  <dd>{selectedSourceData.source_type}</dd>
-                  {selectedSourceData.os_version && (
-                    <>
-                      <dt>OS</dt>
-                      <dd>{selectedSourceData.os_version}</dd>
-                    </>
-                  )}
-                  {selectedSourceData.architecture && (
-                    <>
-                      <dt>Architecture</dt>
-                      <dd>{selectedSourceData.architecture}</dd>
-                    </>
-                  )}
-                  {typeof selectedSourceData.manifest.collected_at === "string" && (
-                    <>
-                      <dt>Collected</dt>
-                      <dd className="mono">{selectedSourceData.manifest.collected_at as string}</dd>
-                    </>
-                  )}
-                  {typeof selectedSourceData.manifest.timezone === "string" && (
-                    <>
-                      <dt>Timezone</dt>
-                      <dd>{selectedSourceData.manifest.timezone as string}</dd>
-                    </>
-                  )}
-                  {Array.isArray(selectedSourceData.manifest.modules_run) &&
-                    selectedSourceData.manifest.modules_run.length > 0 && (
-                      <>
-                        <dt>Modules</dt>
-                        <dd>{(selectedSourceData.manifest.modules_run as string[]).join(", ")}</dd>
-                      </>
-                    )}
-                </dl>
-              )}
-            </div>
-
-            {selectedSourceData?.status === "completed" && hashInfo && (
-              <div className="panel">
-                <h2>Actions</h2>
-                <div className="evidence-hash-panel" style={{ marginTop: "0.65rem" }}>
-                  <div className="evidence-hash-actions">
-                    {hashInfo.hash_status === "complete" ? (
-                      <>
-                        <span className="mono" style={{ fontSize: "0.7rem", color: "var(--muted)" }}>
-                          {(hashInfo.hashed_files_in_db).toLocaleString()} files hashed
-                        </span>
-                        <a
-                          href={api.evidenceHashExportUrl(caseId, selectedSource)}
-                          className="secondary"
-                          style={{ fontSize: "0.72rem", padding: "0.2rem 0.5rem" }}
-                          download
-                        >
-                          Export hashes
-                        </a>
-                      </>
-                    ) : hashInfo.hash_status === "running" ? (
-                      <span className="mono" style={{ fontSize: "0.7rem", color: "var(--muted)" }}>Hashing files…</span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="secondary"
-                        style={{ fontSize: "0.72rem", width: "100%", padding: "0.25rem" }}
-                        disabled={hashingSourceIds.has(selectedSource)}
-                        onClick={() => setConfirmAction({ kind: "hash", sourceId: selectedSource })}
-                      >
-                        {hashingSourceIds.has(selectedSource) ? "Starting…" : "Hash all evidence files"}
-                      </button>
-                    )}
-                  </div>
-                  <div className="evidence-hash-actions" style={{ marginTop: "0.5rem" }}>
-                    {hashInfo.yara_status === "running" ? (
-                      <span className="mono" style={{ fontSize: "0.7rem", color: "var(--muted)" }}>YARA scanning…</span>
-                    ) : hashInfo.yara_status === "complete" ? (
-                      <span className="mono" style={{ fontSize: "0.7rem", color: "var(--muted)" }}>
-                        {(hashInfo.yara_match_count ?? 0).toLocaleString()} YARA rules matched across {(hashInfo.yara_file_count ?? 0).toLocaleString()} files
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        className="secondary"
-                        style={{ fontSize: "0.72rem", width: "100%", padding: "0.25rem" }}
-                        disabled={yaraSourceIds.has(selectedSource)}
-                        onClick={() => setConfirmAction({ kind: "yara", sourceId: selectedSource })}
-                      >
-                        {yaraSourceIds.has(selectedSource) ? "Starting…" : "Scan evidence with YARA"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {sources.length > 0 && (
-              <div className="panel">
-                <button type="button" className="secondary" style={{ width: "100%" }} onClick={openIngestHistory}>
-                  View ingest history
-                </button>
-              </div>
-            )}
-          </section>
+          <SourcesView
+            caseId={caseId}
+            sources={sources}
+            selectedSource={selectedSource}
+            stats={stats}
+            job={job}
+            uploading={uploading}
+            uploadError={uploadError}
+            loadError={loadError}
+            hostname={hostname}
+            platform={platform}
+            hashInfo={hashInfo}
+            hashingSourceIds={hashingSourceIds}
+            yaraSourceIds={yaraSourceIds}
+            onHostnameChange={setHostname}
+            onPlatformChange={setPlatform}
+            onDismissUploadError={() => setUploadError(null)}
+            onUploadFile={handleUploadFile}
+            onOpenSource={openSourceDetails}
+            onOpenIngestHistory={openIngestHistory}
+            onCancelProcessing={cancelProcessing}
+            onHash={(sourceId) => setConfirmAction({ kind: "hash", sourceId })}
+            onYara={(sourceId) => setConfirmAction({ kind: "yara", sourceId })}
+          />
         )}
 
         {tab !== "sources" && canInvestigate ? (
@@ -801,85 +552,32 @@ export default function CaseDetailPage() {
             {stats && selectedSourceData?.status === "completed" && !showIngestStatus && (
               <div className="panel">
                 <h2>Findings</h2>
-                <div className="stats-strip" style={{ marginTop: "0.65rem" }} role="group" aria-label="Jump to view">
-                  {(
-                    [
-                      ["events", stats.timeline_count, "Events", "Open timeline"] as const,
-                      ["objects", stats.entity_count, "Entities", "Open entities"] as const,
-                      ["paths", stats.filesystem_count, "Disk", "Open disk view"] as const,
-                      [
-                        "sigma",
-                        stats.sigma_detection_count ?? 0,
-                        "Detections",
-                        "Open timeline (detections only)",
-                      ] as const,
-                      ...(stats.mft_count > 0
-                        ? ([
-                            ["mft", stats.mft_count, "MFT", "Open MFT view"] as const,
-                          ] satisfies readonly [StatPivot, number, string, string][])
-                        : []),
-                      ...(stats.browser_count > 0
-                        ? ([
-                            ["browser", stats.browser_count, "Browser", "Open browser forensics"] as const,
-                          ] satisfies readonly [StatPivot, number, string, string][])
-                        : []),
-                    ] satisfies readonly [StatPivot, number, string, string][]
-                  )
-                    .filter(([target]) => timelineState !== "error" || target !== "events")
-                    .map(([target, count, label, hint]) => (
-                    <button
-                      key={target}
-                      type="button"
-                      className={`stat-card stat-card--action${statCardActive(target) ? " active" : ""}`}
-                      title={`${count.toLocaleString()} ${label.toLowerCase()} — ${hint}`}
-                      aria-current={statCardActive(target) ? "true" : undefined}
-                      onClick={() => pivotToStat(target)}
-                    >
-                      <div className="stat-value">{formatCompactStat(count)}</div>
-                      <div className="stat-label">{label}</div>
-                    </button>
-                  ))}
-                </div>
+                <CountsStrip
+                  stats={stats}
+                  timelineState={timelineState}
+                  isActive={statCardActive}
+                  onPivot={pivotToStat}
+                />
               </div>
             )}
 
             {tab === "overview" && stats && selectedSourceData && (
-              <section className="case-summary-panel" aria-label="Case summary">
-                <div className="case-summary-head">
-                  <div>
-                    <p className="section-label">Case Summary</p>
-                    <h2>{selectedSourceData.hostname}</h2>
-                    <p>
-                      {sourcePlatformLabel(selectedSourceData.platform)} endpoint evidence ready for triage.
-                    </p>
-                  </div>
-                  {detections.length ? (
-                    <SeverityBadge
-                      level={topSeverity(detections)}
-                      variant="full"
-                      title={`highest of ${detections.length.toLocaleString()} detections`}
-                      className="summary-severity"
-                    />
-                  ) : (
-                    <span className="summary-severity summary-severity-none">No detections</span>
-                  )}
-                </div>
-                <div className="summary-kpis">
-                  <div><strong>{timelineState === "error" ? "—" : formatCompactStat(stats.timeline_count)}</strong><span>Timeline events</span></div>
-                  <div><strong>{detections.length.toLocaleString()}</strong><span>Detections</span></div>
-                  <div><strong>{detections.filter((d) => d.level === "critical").length.toLocaleString()}</strong><span>Critical detections</span></div>
-                </div>
-                <div className="summary-insights">
-                  <div>
-                    <span>Top Hosts</span>
-                    <strong>{selectedSourceData.hostname}</strong>
-                  </div>
-                  <div>
-                    <span>Top Categories</span>
-                    <strong>{summaryCategories.length ? summaryCategories.join(", ") : "No detection categories"}</strong>
-                  </div>
-                </div>
-              </section>
+              <OverviewView
+                source={selectedSourceData}
+                sources={sources}
+                selectedSource={selectedSource}
+                stats={stats}
+                detections={detections}
+                timelineState={timelineState}
+                onSelectSource={(s) => {
+                  setSelectedSource(s.id);
+                  setTab("timeline");
+                }}
+                onOpenDetection={(d) => {
+                  setDetectionFocus(d.rule_id);
+                  setTab("detections");
+                }}
+              />
             )}
 
             {tab === "detections" && (
@@ -887,6 +585,8 @@ export default function CaseDetailPage() {
                 caseId={caseId}
                 sourceId={selectedSource}
                 detections={detections}
+                focusRuleId={detectionFocus}
+                onFocusConsumed={() => setDetectionFocus(null)}
                 onViewEvent={(eventId) => {
                   setTimelineSigmaOnly(false);
                   setTab("timeline");
