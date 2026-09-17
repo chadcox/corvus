@@ -20,13 +20,13 @@
     "@fontsource/syne": "^5.3.0",
     "@tanstack/react-virtual": "^3.14.13",
     "react": "^19.0.0",
-    "react-dom": "^19.2.8",
+    "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.7",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "typescript": "~6.0.3",
     "vite": "^8.3.0"
