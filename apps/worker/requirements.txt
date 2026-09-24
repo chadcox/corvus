@@ -1,7 +1,7 @@
 celery>=5.6.3
 redis>=8.1.0
 sqlalchemy>=2.0.54
-psycopg[binary]>=3.3.5
+psycopg[binary]>=3.3.6
 pydantic-settings>=2.15.0
 pyyaml>=6.0.3
 opensearch-py>=3.2.0
