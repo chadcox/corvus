@@ -1,6 +1,6 @@
 celery>=5.6.3
 redis>=8.1.0
-sqlalchemy>=2.1.5
+sqlalchemy>=2.1.6
 psycopg[binary]>=3.3.6
 pydantic-settings>=2.16.1
 pyyaml>=6.0.3
