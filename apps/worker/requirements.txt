@@ -1,5 +1,5 @@
 celery>=5.7.0
-redis>=8.1.0
+redis>=8.2.0
 sqlalchemy>=2.1.9
 psycopg[binary]>=3.3.9
 pydantic-settings>=2.16.3
